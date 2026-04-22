@@ -55,6 +55,10 @@ export default function EntryScreen() {
     (text: string, currentMood: number) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
+        if (!text.trim()) {
+          await deleteEntry(date!);
+          return;
+        }
         const wc = countWords(text);
         const entry: JournalEntry = {
           date: date!,
@@ -85,6 +89,13 @@ export default function EntryScreen() {
 
   const handleManualSave = async () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    
+    if (!content.trim()) {
+      await deleteEntry(date!);
+      router.back();
+      return;
+    }
+
     setSaving(true);
     const wc = countWords(content);
     await saveEntry({ date: date!, content, mood, wordCount: wc, updatedAt: new Date().toISOString() });
@@ -252,13 +263,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
     paddingBottom: 60,
   },
   divider: {
     height: 1,
     backgroundColor: Colors.cardBorder,
-    marginVertical: Spacing.md,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.md,
   },
   input: {
     fontSize: 17,

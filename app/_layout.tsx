@@ -26,7 +26,6 @@ import {
   CrimsonPro_600SemiBold,
 } from '@expo-google-fonts/crimson-pro';
 import { View, ActivityIndicator } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Colors } from '../constants/theme';
 import { FontProvider } from '../hooks/useFontStyle';
 
@@ -57,7 +56,6 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
       <FontProvider>
         <StatusBar style="dark" />
         <Stack
@@ -65,6 +63,8 @@ export default function RootLayout() {
             headerShown: false,
             contentStyle: { backgroundColor: '#FAF8F2' },
             animation: 'slide_from_right',
+            gestureEnabled: true,
+            fullScreenGestureEnabled: true,
           }}
         >
           <Stack.Screen name="index" />
@@ -76,6 +76,5 @@ export default function RootLayout() {
           />
         </Stack>
       </FontProvider>
-    </GestureHandlerRootView>
   );
 }

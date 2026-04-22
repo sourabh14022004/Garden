@@ -16,7 +16,7 @@ export default function MoodPicker({ selected, onChange }: Props) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>How are you feeling?</Text>
+      <Text style={styles.label}>How are you feeling ?</Text>
       <View style={styles.row}>
         {MOODS.map((mood, idx) => {
           const isSelected = selected === idx;
@@ -44,7 +44,7 @@ export default function MoodPicker({ selected, onChange }: Props) {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: Spacing.md,
+    marginBottom: Spacing.xs,
   },
   label: {
     fontFamily: Typography.bodyMedium,
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   row: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,15 +9,26 @@ import {
   Animated,
   Dimensions,
   Platform,
-} from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Colors, Spacing, Typography, Radius } from '../constants/theme';
-import { getAllEntries, JournalEntry, friendlyDate, shortFriendlyDate } from '../hooks/useJournal';
-import { getPlantForDate } from '../hooks/usePlants';
+  PanResponder,
+} from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import { Colors, Spacing, Typography, Radius } from "../constants/theme";
+import {
+  getAllEntries,
+  JournalEntry,
+  friendlyDate,
+  shortFriendlyDate,
+} from "../hooks/useJournal";
+import { getPlantForDate } from "../hooks/usePlants";
+import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
-
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
+const currentYear = new Date().getFullYear();
 // ── Grid constants ────────────────────────────────────────────────────────────
 const PLANTS_PER_ROW = 7;
 const H_PAD = Spacing.lg;
@@ -87,7 +98,11 @@ function PlantCell({
       <Animated.View style={{ opacity: fade, transform: [{ scale }] }}>
         <Image
           source={getPlantForDate(entry.date)}
-          style={{ width: PLANT_SIZE, height: PLANT_SIZE, resizeMode: 'contain' }}
+          style={{
+            width: PLANT_SIZE,
+            height: PLANT_SIZE,
+            resizeMode: "contain",
+          }}
         />
       </Animated.View>
     </TouchableOpacity>
@@ -130,7 +145,9 @@ function PlantRow({
             key={`empty-${i}`}
             style={[
               styles.emptySlot,
-              { transform: [{ translateX: jitter.x }, { translateY: jitter.y }] },
+              {
+                transform: [{ translateX: jitter.x }, { translateY: jitter.y }],
+              },
             ]}
           >
             <View style={styles.emptyDot} />
@@ -145,7 +162,11 @@ function PlantRow({
 function EmptyForest({ onWrite }: { onWrite: () => void }) {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(fade, { toValue: 1, duration: 700, useNativeDriver: true }).start();
+    Animated.timing(fade, {
+      toValue: 1,
+      duration: 700,
+      useNativeDriver: true,
+    }).start();
   }, []);
 
   return (
@@ -153,9 +174,13 @@ function EmptyForest({ onWrite }: { onWrite: () => void }) {
       <Text style={styles.emptyEmoji}>🌱</Text>
       <Text style={styles.emptyTitle}>Your garden is empty</Text>
       <Text style={styles.emptySubtitle}>
-        Write your first entry to plant{'\n'}the seed of your forest.
+        Write your first entry to plant{"\n"}the seed of your forest.
       </Text>
-      <TouchableOpacity style={styles.emptyBtn} onPress={onWrite} activeOpacity={0.8}>
+      <TouchableOpacity
+        style={styles.emptyBtn}
+        onPress={onWrite}
+        activeOpacity={0.8}
+      >
         <Text style={styles.emptyBtnText}>Plant a seed 🌿</Text>
       </TouchableOpacity>
     </Animated.View>
@@ -167,6 +192,7 @@ export default function ForestScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
+  const legendScrollRef = useRef<ScrollView>(null);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -176,18 +202,20 @@ export default function ForestScreen() {
     setLoading(false);
   }, []);
 
+  const hasNavigated = React.useRef(false);
+
   useFocusEffect(
     useCallback(() => {
+      hasNavigated.current = false;
       setLoading(true);
       load();
-    }, [load])
+    }, [load]),
   );
 
   // Load entries when screen comes into focus
 
-
   const rows = chunkIntoRows(entries);
-  
+
   // Calculate how many rows fill the viewable garden area to paint the background grid
   const ROW_HEIGHT = PLANT_SIZE; // no extra margin to pack them tightly
   const availableHeight = SCREEN_H - insets.top - 80 - 104; // Total ht - headerSp - bottomBar
@@ -200,22 +228,47 @@ export default function ForestScreen() {
 
   const todayKey = new Date().toISOString().slice(0, 10);
 
+  const swipeHandlers = React.useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        return (
+          gestureState.dx > 20 &&
+          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2
+        );
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dx > 30 && !hasNavigated.current) {
+          hasNavigated.current = true;
+          router.back();
+        }
+      },
+    }),
+  ).current;
+
   return (
-    <View style={styles.root}>
+    <View style={styles.root} {...swipeHandlers.panHandlers}>
       {/* Background */}
       <View style={styles.bg} />
 
-      <SafeAreaView style={StyleSheet.absoluteFill} edges={['top']} pointerEvents="box-none">
+      <SafeAreaView
+        style={[StyleSheet.absoluteFill, { zIndex: 10 }]}
+        edges={["top"]}
+        pointerEvents="box-none"
+      >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
-            <Text style={styles.backText}>← Back</Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.headerBtn}
+          >
+            <Ionicons name="chevron-back" size={26} color={Colors.textMuted} />
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.title}>My Forest</Text>
+            <Text style={styles.title}>{currentYear}</Text>
             {entries.length > 0 && (
               <Text style={styles.subtitle}>
-                {entries.length} {entries.length === 1 ? 'plant' : 'plants'} growing 🌿
+                {entries.length} {entries.length === 1 ? "plant" : "plants"}{" "}
+                growing 🌿
               </Text>
             )}
           </View>
@@ -224,7 +277,7 @@ export default function ForestScreen() {
             onPress={() => router.push(`/entry/${todayKey}`)}
             activeOpacity={0.8}
           >
-            <Text style={styles.writeBtnText}>+ Write</Text>
+            <MaterialIcons name="add" size={26} color={Colors.textMuted} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -252,7 +305,6 @@ export default function ForestScreen() {
               onPlantPress={(entry) => router.push(`/entry/${entry.date}`)}
             />
           ))}
-
         </ScrollView>
       )}
 
@@ -261,28 +313,63 @@ export default function ForestScreen() {
         <View style={[styles.legendWrapper, { paddingBottom: insets.bottom }]}>
           {/* Ground strip moved to sit directly on top of the bottom bar */}
           <View style={styles.ground} />
-          
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.legendContent}
-          >
-            {/* Show oldest to newest in left-to-right sequence */}
-            {entries.slice(0, 12).reverse().map((entry) => (
-              <TouchableOpacity
-                key={entry.date}
-                style={styles.legendItem}
-                onPress={() => router.push(`/entry/${entry.date}`)}
-                activeOpacity={0.7}
-              >
-                <Image
-                  source={getPlantForDate(entry.date)}
-                  style={styles.legendPlant}
-                />
-                <Text style={styles.legendDate}>{shortFriendlyDate(entry.date)}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+
+          <View>
+            <ScrollView
+              ref={legendScrollRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.legendContent}
+              onContentSizeChange={() =>
+                legendScrollRef.current?.scrollToEnd({ animated: false })
+              }
+            >
+              {/* Show oldest to newest in left-to-right sequence */}
+              {entries
+                .slice(0, 12)
+                .reverse()
+                .map((entry) => (
+                  <TouchableOpacity
+                    key={entry.date}
+                    style={styles.legendItem}
+                    onPress={() => router.push(`/entry/${entry.date}`)}
+                    activeOpacity={0.7}
+                  >
+                    <Image
+                      source={getPlantForDate(entry.date)}
+                      style={styles.legendPlant}
+                    />
+                    <Text style={styles.legendDate}>
+                      {shortFriendlyDate(entry.date)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+            </ScrollView>
+
+            {/* Edge fades */}
+            <View pointerEvents="none" style={styles.fadeLeft}>
+              <Svg height="100%" width="100%">
+                <Defs>
+                  <LinearGradient id="gradL" x1="0" y1="0" x2="1" y2="0">
+                    <Stop offset="0" stopColor="#FAF7F0" stopOpacity="0.95" />
+                    <Stop offset="1" stopColor="#FAF7F0" stopOpacity="0" />
+                  </LinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100%" height="100%" fill="url(#gradL)" />
+              </Svg>
+            </View>
+            <View pointerEvents="none" style={styles.fadeRight}>
+              <Svg height="100%" width="100%">
+                <Defs>
+                  <LinearGradient id="gradR" x1="0" y1="0" x2="1" y2="0">
+                    <Stop offset="0" stopColor="#FAF7F0" stopOpacity="0" />
+                    <Stop offset="1" stopColor="#FAF7F0" stopOpacity="0.95" />
+                  </LinearGradient>
+                </Defs>
+                <Rect x="0" y="0" width="100%" height="100%" fill="url(#gradR)" />
+              </Svg>
+            </View>
+          </View>
         </View>
       )}
     </View>
@@ -292,22 +379,22 @@ export default function ForestScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#FAF7F0',
+    backgroundColor: "#FAF7F0",
   },
   bg: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#FAF7F0',
+    backgroundColor: "#FAF7F0",
   },
 
   // ── Header ──
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.sm,
-    backgroundColor: 'rgba(250, 247, 240, 0.92)',
+    backgroundColor: "rgba(250, 247, 240, 0.92)",
     borderBottomWidth: 1,
     borderBottomColor: Colors.cardBorder,
   },
@@ -317,12 +404,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textMuted,
   },
-  headerCenter: { alignItems: 'center' },
+  headerCenter: { alignItems: "center" },
   title: {
     fontFamily: Typography.heading,
     fontSize: 20,
     color: Colors.text,
-    fontStyle: 'italic',
+    fontStyle: "italic",
   },
   subtitle: {
     fontFamily: Typography.body,
@@ -338,7 +425,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.accentDim,
     minWidth: 60,
-    alignItems: 'center',
+    alignItems: "center",
   },
   writeBtnText: {
     fontFamily: Typography.bodySemibold,
@@ -352,26 +439,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: H_PAD,
     paddingBottom: 40,
     flexGrow: 1,
-    justifyContent: 'flex-start', // plants start from the top, under the header
+    justifyContent: "flex-start", // plants start from the top, under the header
   },
 
   plantRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     // removing bottom margin makes them overlap physically, jitter moves them around
   },
   plantSlot: {
     width: SLOT_W,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    alignItems: "center",
+    justifyContent: "flex-end",
   },
 
   // Empty slot — subtle dot placeholder so the grid shape is visible
   emptySlot: {
     width: SLOT_W,
     height: PLANT_SIZE,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
+    alignItems: "center",
+    justifyContent: "flex-end",
     paddingBottom: 10,
   },
   emptyDot: {
@@ -391,8 +478,8 @@ const styles = StyleSheet.create({
 
   // ── Legend ──
   legendWrapper: {
-    backgroundColor: 'rgba(250, 247, 240, 0.85)',
-    position: 'absolute',
+    backgroundColor: "rgba(250, 247, 240, 0.85)",
+    position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
@@ -403,31 +490,46 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
     gap: Spacing.xl,
-    alignItems: 'flex-start',
+    alignItems: "flex-start",
   },
   legendItem: {
-    alignItems: 'center',
+    alignItems: "center",
     width: 64,
   },
   legendPlant: {
     width: 44,
     height: 44,
-    resizeMode: 'contain',
+    resizeMode: "contain",
     marginBottom: 8,
   },
   legendDate: {
     fontFamily: Typography.bodyMedium,
     fontSize: 10,
     color: Colors.textMuted,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 14,
+    opacity: 0.5,
+  },
+  fadeLeft: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 32,
+  },
+  fadeRight: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 32,
   },
 
   // ── Empty state ──
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     padding: Spacing.xl,
     marginTop: 80,
   },
@@ -436,15 +538,15 @@ const styles = StyleSheet.create({
     fontFamily: Typography.heading,
     fontSize: 26,
     color: Colors.text,
-    fontStyle: 'italic',
-    textAlign: 'center',
+    fontStyle: "italic",
+    textAlign: "center",
     marginBottom: Spacing.sm,
   },
   emptySubtitle: {
     fontFamily: Typography.body,
     fontSize: 14,
     color: Colors.textMuted,
-    textAlign: 'center',
+    textAlign: "center",
     lineHeight: 22,
     marginBottom: Spacing.xl,
   },
@@ -454,7 +556,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRadius: Radius.full,
     borderWidth: 1,
-    borderColor: Colors.accent + '60',
+    borderColor: Colors.accent + "60",
   },
   emptyBtnText: {
     fontFamily: Typography.bodySemibold,

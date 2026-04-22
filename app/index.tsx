@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  PanResponder,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,8 +53,11 @@ export default function HomeScreen() {
     setTotalPlants(all.filter((x) => x.content?.trim()).length);
   }, [selectedDate]);
 
+  const hasNavigated = React.useRef(false);
+
   useFocusEffect(
     useCallback(() => {
+      hasNavigated.current = false;
       load();
     }, [load])
   );
@@ -68,8 +72,22 @@ export default function HomeScreen() {
   const isToday = selectedDate === todayKey();
   const todayPlant = getPlantForDate(selectedDate);
 
+  const swipeHandlers = React.useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponderCapture: (_, gestureState) => {
+        return gestureState.dx < -20 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
+      },
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dx < -30 && !hasNavigated.current) {
+          hasNavigated.current = true;
+          router.push('/forest');
+        }
+      },
+    })
+  ).current;
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+      <SafeAreaView style={styles.safe} edges={['top']} {...swipeHandlers.panHandlers}>
       {/* Header */}
       <View style={styles.header}>
         <View>
@@ -137,7 +155,7 @@ export default function HomeScreen() {
         {/* Selected date label */}
         <Text style={styles.selectedDateLabel}>{friendlyDate(selectedDate)}</Text>
 
-        {entry ? (
+        {entry && entry.content?.trim() ? (
           /* ── Existing entry card ── */
           <TouchableOpacity
             activeOpacity={0.85}
@@ -182,9 +200,8 @@ export default function HomeScreen() {
         )}
       </ScrollView>
 
-      {/* FAB — always visible for selected date */}
       <FloatingButton onPress={() => router.push(`/entry/${selectedDate}`)} />
-    </SafeAreaView>
+      </SafeAreaView>
   );
 }
 
