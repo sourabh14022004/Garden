@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ import MoodPicker from '../../components/MoodPicker';
 import FontPicker from '../../components/FontPicker';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
 import { useFontStyle } from '../../hooks/useFontStyle';
+import { useAmbientSound } from '../../hooks/useAmbientSound';
 import {
   getEntry,
   saveEntry,
@@ -29,6 +31,7 @@ export default function EntryScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
   const router = useRouter();
   const { currentFont } = useFontStyle();
+  const { enabled: soundEnabled, setEnabled: setSoundEnabled, fadeIn: fadeInAmbient, fadeOut: fadeOutAmbient, isPlaying } = useAmbientSound();
 
   const [content, setContent] = useState('');
   const [mood, setMood] = useState(2);
@@ -36,7 +39,13 @@ export default function EntryScreen() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showFontPicker, setShowFontPicker] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const [displaySaveStatus, setDisplaySaveStatus] = useState('Save');
+  
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wasTyping = useRef(false);
+  const flipAnim = useRef(new Animated.Value(1)).current;
 
   // Load existing entry
   useEffect(() => {
@@ -49,6 +58,25 @@ export default function EntryScreen() {
       }
     });
   }, [date]);
+
+  // Clean up sound on unmount
+  useEffect(() => {
+    return () => {
+      fadeOutAmbient();
+    };
+  }, []);
+
+  // Handle automatic fade in / fade out based on typing state
+  useEffect(() => {
+    if (!soundEnabled) return;
+    if (isTyping && !wasTyping.current) {
+      fadeInAmbient();
+      wasTyping.current = true;
+    } else if (!isTyping && wasTyping.current) {
+      fadeOutAmbient();
+      wasTyping.current = false;
+    }
+  }, [isTyping, soundEnabled, fadeInAmbient, fadeOutAmbient]);
 
   // Auto-save with debounce
   const triggerSave = useCallback(
@@ -80,6 +108,14 @@ export default function EntryScreen() {
     setWordCount(countWords(text));
     setSaved(false);
     triggerSave(text, mood);
+
+    if (soundEnabled) {
+      setIsTyping(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        setIsTyping(false);
+      }, 4000); // fade out after 4s of inactivity
+    }
   };
 
   const handleMoodChange = (m: number) => {
@@ -122,10 +158,32 @@ export default function EntryScreen() {
     );
   };
 
-  const saveStatus = saving ? 'Saving…' : saved ? '✓ Saved' : '';
+  const currentSaveStatus = saving ? 'Saving…' : saved ? '✓ Saved' : 'Save';
+
+  useEffect(() => {
+    if (displaySaveStatus !== currentSaveStatus) {
+      Animated.timing(flipAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start(() => {
+        setDisplaySaveStatus(currentSaveStatus);
+        Animated.timing(flipAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }).start();
+      });
+    }
+  }, [currentSaveStatus, displaySaveStatus, flipAnim]);
+
+  const saveTextRotateX = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['90deg', '0deg'],
+  });
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -139,15 +197,23 @@ export default function EntryScreen() {
 
           <View style={styles.navCenter}>
             <Text style={styles.navDate}>{friendlyDate(date ?? '')}</Text>
-            {saveStatus ? (
-              <Text style={[styles.saveStatus, saved && styles.saveStatusSaved]}>
-                {saveStatus}
-              </Text>
-            ) : null}
           </View>
 
-          <TouchableOpacity onPress={handleManualSave} style={styles.navBtn} disabled={saving}>
-            <Text style={[styles.navBtnText, styles.navSave]}>Save</Text>
+          <TouchableOpacity 
+            onPress={handleManualSave} 
+            style={styles.navBtnRight} 
+            disabled={saving || displaySaveStatus !== 'Save'}
+          >
+            <Animated.Text 
+              style={[
+                styles.navBtnText, 
+                styles.navSave, 
+                displaySaveStatus === '✓ Saved' && styles.saveStatusSaved,
+                { transform: [{ rotateX: saveTextRotateX }] }
+              ]}
+            >
+              {displaySaveStatus}
+            </Animated.Text>
           </TouchableOpacity>
         </View>
 
@@ -178,11 +244,25 @@ export default function EntryScreen() {
         </ScrollView>
 
         {/* Bottom bar */}
-        <View style={styles.bottomBar}>
+        <View style={[styles.bottomBar, { paddingBottom: 24 }]}>
           {/* Word count */}
           <Text style={styles.wordCountText}>
             {wordCount} {wordCount === 1 ? 'word' : 'words'}
           </Text>
+
+          {/* Ambient sound toggle */}
+          <TouchableOpacity
+            style={[
+              styles.soundBtn,
+              soundEnabled && styles.soundBtnActive,
+            ]}
+            onPress={() => setSoundEnabled(!soundEnabled)}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.soundBtnIcon}>
+              {soundEnabled ? '🔊' : '🔇'}
+            </Text>
+          </TouchableOpacity>
 
           {/* Font picker button */}
           <TouchableOpacity
@@ -215,7 +295,7 @@ export default function EntryScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: Colors.bg,
+    backgroundColor: Colors.bgDeep,
   },
   navbar: {
     flexDirection: 'row',
@@ -230,7 +310,13 @@ const styles = StyleSheet.create({
   navBtn: {
     paddingVertical: 8,
     paddingHorizontal: 4,
-    minWidth: 60,
+    width: 80,
+  },
+  navBtnRight: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    width: 80,
+    alignItems: 'flex-end',
   },
   navBtnText: {
     fontFamily: Typography.bodyMedium,
@@ -261,6 +347,7 @@ const styles = StyleSheet.create({
   },
   scroll: {
     flex: 1,
+    backgroundColor: Colors.bg,
   },
   scrollContent: {
     paddingHorizontal: Spacing.lg,
@@ -294,6 +381,21 @@ const styles = StyleSheet.create({
     fontFamily: Typography.body,
     fontSize: 13,
     color: Colors.textFaint,
+  },
+  soundBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  soundBtnActive: {
+    backgroundColor: Colors.accentSoft,
+    borderColor: Colors.accentDim + '60',
+  },
+  soundBtnIcon: {
+    fontSize: 14,
   },
   fontBtn: {
     flexDirection: 'row',

@@ -181,7 +181,8 @@ function EmptyForest({ onWrite }: { onWrite: () => void }) {
         onPress={onWrite}
         activeOpacity={0.8}
       >
-        <Text style={styles.emptyBtnText}>Plant a seed 🌿</Text>
+        <Text style={styles.emptyBtnText}>Plant a seed</Text>
+        <Text style={styles.emptyBtnIcon}>🌿</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -277,7 +278,7 @@ export default function ForestScreen() {
             onPress={() => router.push(`/entry/${todayKey}`)}
             activeOpacity={0.8}
           >
-            <MaterialIcons name="add" size={26} color={Colors.textMuted} />
+            <MaterialIcons name="add" size={20} color={Colors.accent} />
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -419,13 +420,15 @@ const styles = StyleSheet.create({
   },
   writeBtn: {
     backgroundColor: Colors.accentSoft,
-    paddingVertical: 7,
     paddingHorizontal: 14,
     borderRadius: Radius.full,
     borderWidth: 1,
     borderColor: Colors.accentDim,
     minWidth: 60,
+    height: 32,
+    flexDirection: 'row',
     alignItems: "center",
+    justifyContent: "center",
   },
   writeBtnText: {
     fontFamily: Typography.bodySemibold,
@@ -557,10 +560,18 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     borderWidth: 1,
     borderColor: Colors.accent + "60",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
   emptyBtnText: {
     fontFamily: Typography.bodySemibold,
     fontSize: 15,
     color: Colors.accent,
+    lineHeight: 18,
+  },
+  emptyBtnIcon: {
+    fontSize: 15,
+    lineHeight: 18,
   },
 });

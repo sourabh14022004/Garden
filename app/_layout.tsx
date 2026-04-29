@@ -28,6 +28,7 @@ import {
 import { View, ActivityIndicator } from 'react-native';
 import { Colors } from '../constants/theme';
 import { FontProvider } from '../hooks/useFontStyle';
+import { AmbientSoundProvider } from '../hooks/useAmbientSound';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -57,24 +58,30 @@ export default function RootLayout() {
 
   return (
       <FontProvider>
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: '#FAF8F2' },
-            animation: 'slide_from_right',
-            gestureEnabled: true,
-            fullScreenGestureEnabled: true,
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="history" />
-          <Stack.Screen name="forest" />
-          <Stack.Screen
-            name="entry/[date]"
-            options={{ animation: 'slide_from_bottom' }}
-          />
-        </Stack>
+        <AmbientSoundProvider>
+          <StatusBar style="dark" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: '#FAF8F2' },
+              animation: 'slide_from_right',
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen
+              name="profile"
+              options={{ animation: 'slide_from_left' }}
+            />
+            <Stack.Screen name="history" />
+            <Stack.Screen name="forest" />
+            <Stack.Screen
+              name="entry/[date]"
+              options={{ animation: 'slide_from_bottom' }}
+            />
+          </Stack>
+        </AmbientSoundProvider>
       </FontProvider>
   );
 }

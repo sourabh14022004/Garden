@@ -75,12 +75,19 @@ export default function HomeScreen() {
   const swipeHandlers = React.useRef(
     PanResponder.create({
       onMoveShouldSetPanResponderCapture: (_, gestureState) => {
-        return gestureState.dx < -20 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
+        return Math.abs(gestureState.dx) > 20 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
       },
       onPanResponderMove: (_, gestureState) => {
-        if (gestureState.dx < -30 && !hasNavigated.current) {
-          hasNavigated.current = true;
-          router.push('/forest');
+        if (!hasNavigated.current) {
+          if (gestureState.dx < -30) {
+            // Left swipe → Forest
+            hasNavigated.current = true;
+            router.push('/forest');
+          } else if (gestureState.dx > 30) {
+            // Right swipe → Profile
+            hasNavigated.current = true;
+            router.push('/profile');
+          }
         }
       },
     })
@@ -100,14 +107,16 @@ export default function HomeScreen() {
             onPress={() => router.push('/forest')}
             activeOpacity={0.7}
           >
-            <Text style={styles.forestBtnText}>Forest 🌿</Text>
+            <Text style={styles.forestBtnText}>Garden</Text>
+            <Text style={styles.forestBtnIcon}>🌿</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.historyBtn}
             onPress={() => router.push('/history')}
             activeOpacity={0.7}
           >
-            <Text style={styles.historyBtnText}>All →</Text>
+            <Text style={styles.historyBtnText}>All</Text>
+            <Text style={styles.historyBtnIcon}>→</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -235,31 +244,62 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 4,
   },
+  profileBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: Colors.accentSoft,
+    borderWidth: 1,
+    borderColor: Colors.accentDim,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileBtnIcon: {
+    fontSize: 16,
+  },
   forestBtn: {
-    paddingVertical: 8,
+    paddingVertical: 7,
     paddingHorizontal: 14,
     borderRadius: Radius.full,
     backgroundColor: Colors.accentSoft,
     borderWidth: 1,
     borderColor: Colors.accentDim,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   forestBtnText: {
     fontFamily: Typography.bodySemibold,
     fontSize: 13,
     color: Colors.accent,
+    lineHeight: 16,
+  },
+  forestBtnIcon: {
+    fontSize: 13,
+    lineHeight: 16,
   },
   historyBtn: {
-    paddingVertical: 8,
+    paddingVertical: 7,
     paddingHorizontal: 14,
     borderRadius: Radius.full,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.cardBorder,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   historyBtnText: {
     fontFamily: Typography.bodySemibold,
     fontSize: 13,
     color: Colors.accent,
+    lineHeight: 16,
+  },
+  historyBtnIcon: {
+    fontFamily: Typography.bodySemibold,
+    fontSize: 13,
+    color: Colors.accent,
+    lineHeight: 16,
   },
   // Stats strip
   statsStrip: {
