@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   ScrollView,
   View,
@@ -8,11 +8,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { Colors, Radius, Spacing, Typography } from '../constants/theme';
-import { formatDate, parseDate } from '../hooks/useJournal';
+import { formatDate, parseDate, todayKey } from '../hooks/useJournal';
 
-const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-const ITEM_WIDTH = 52;
-const ITEM_MARGIN = 6;
+const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH_LABELS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const ITEM_WIDTH = 40;
+const ITEM_MARGIN = 4;
 
 interface Props {
   selectedDate: string;
@@ -44,99 +45,237 @@ export default function CalendarStrip({ selectedDate, markedDates, onSelectDate 
     }, 100);
   }, [selectedDate]);
 
-  return (
-    <ScrollView
-      ref={scrollRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.container}
-    >
-      {days.map((date) => {
-        const d = parseDate(date);
-        const dayLabel = DAY_LABELS[d.getDay()];
-        const dayNum = d.getDate();
-        const isSelected = date === selectedDate;
-        const isMarked = markedDates.has(date);
-        const isToday = date === formatDate(new Date());
+  const selDateObj = parseDate(selectedDate);
+  const isSelectedToday = selectedDate === todayKey();
+  const tabTitle = isSelectedToday ? "Today" : DAY_LABELS[selDateObj.getDay()];
 
-        return (
-          <TouchableOpacity
-            key={date}
-            onPress={() => onSelectDate(date)}
-            activeOpacity={0.7}
-            style={[
-              styles.item,
-              isSelected && styles.itemSelected,
-              isToday && !isSelected && styles.itemToday,
-            ]}
-          >
-            <Text style={[styles.dayLabel, isSelected && styles.dayLabelSelected]}>
-              {dayLabel}
-            </Text>
-            <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>
-              {dayNum}
-            </Text>
-            {isMarked && (
-              <View style={[styles.dot, isSelected && styles.dotSelected]} />
-            )}
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+  const monthName = MONTH_LABELS[selDateObj.getMonth()];
+  const dateStr = `${selDateObj.getDate().toString().padStart(2, '0')}.${(selDateObj.getMonth() + 1).toString().padStart(2, '0')}.${selDateObj.getFullYear().toString().slice(-2)}`;
+  
+  // Real time for the dashboard feel
+  const [time, setTime] = useState(new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeString = time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).split(' ');
+  const tNum = timeString[0];
+  const tAmPm = timeString[1] || '';
+
+  return (
+    <View style={styles.container}>
+      {/* Top Row: Tab + Scrollable Dates */}
+      <View style={styles.topRow}>
+        <View style={styles.tabContainer}>
+          <View style={styles.tab}>
+            <Text style={styles.tabText}>{tabTitle}</Text>
+          </View>
+          {/* Inner curve mask */}
+          <View style={styles.curveBridge}>
+            <View style={styles.curveCutout} />
+          </View>
+        </View>
+
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          style={styles.scrollView}
+        >
+          {days.map((date) => {
+            const d = parseDate(date);
+            const dayNum = d.getDate();
+            const isSelected = date === selectedDate;
+            const isMarked = markedDates.has(date);
+            const isToday = date === todayKey();
+
+            return (
+              <TouchableOpacity
+                key={date}
+                onPress={() => onSelectDate(date)}
+                activeOpacity={0.7}
+                style={[
+                  styles.item,
+                  isSelected && styles.itemSelected,
+                  isToday && !isSelected && styles.itemToday,
+                ]}
+              >
+                <Text style={[styles.dayNum, isSelected && styles.dayNumSelected]}>
+                  {dayNum}
+                </Text>
+                {isMarked && (
+                  <View style={[styles.dot, isSelected && styles.dotSelected]} />
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Main Bottom Card */}
+      <View style={styles.mainCard}>
+        <View style={styles.cardContent}>
+          <View style={styles.dateBlock}>
+            <Text style={styles.monthText}>{monthName}</Text>
+            <Text style={styles.dateText}>{dateStr}</Text>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.timeBlock}>
+            <Text style={styles.timeNum}>{tNum}</Text>
+            <Text style={styles.timeAmPm}>{tAmPm}</Text>
+          </View>
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    backgroundColor: Colors.bgDeep,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  tabContainer: {
+    position: 'relative',
+    zIndex: 2,
+  },
+  tab: {
+    backgroundColor: Colors.card,
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 12,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    minWidth: 84,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabText: {
+    fontFamily: Typography.bodyMedium,
+    fontSize: 14,
+    color: Colors.text,
+  },
+  curveBridge: {
+    position: 'absolute',
+    bottom: 0,
+    right: -24,
+    width: 24,
+    height: 24,
+    backgroundColor: Colors.card,
+    zIndex: 1,
+  },
+  curveCutout: {
+    flex: 1,
+    backgroundColor: Colors.bgDeep,
+    borderBottomLeftRadius: 24,
+  },
+  scrollView: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  scrollContent: {
+    paddingBottom: 8,
     alignItems: 'center',
   },
   item: {
-    width: ITEM_WIDTH,
+    width: 40,
+    height: 40,
     marginHorizontal: ITEM_MARGIN,
     alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.surface,
+    justifyContent: 'center',
+    borderRadius: Radius.full,
+    backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: Colors.cardBorder,
+    borderColor: 'rgba(0,0,0,0.06)',
   },
   itemSelected: {
-    backgroundColor: Colors.accent,
-    borderColor: Colors.accent,
+    backgroundColor: 'rgba(0,0,0,0.04)',
+    borderColor: 'transparent',
   },
   itemToday: {
     borderColor: Colors.accentDim,
   },
-  dayLabel: {
-    fontFamily: Typography.bodyMedium,
-    fontSize: 11,
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  dayLabelSelected: {
-    color: Colors.bgDeep,
-  },
   dayNum: {
-    fontFamily: Typography.bodySemibold,
-    fontSize: 18,
-    color: Colors.text,
-    marginTop: 2,
+    fontFamily: Typography.bodyMedium,
+    fontSize: 14,
+    color: Colors.textMuted,
   },
   dayNumSelected: {
-    color: Colors.bgDeep,
+    color: Colors.text,
+    fontFamily: Typography.bodySemibold,
   },
   dot: {
-    width: 5,
-    height: 5,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.accent,
-    marginTop: 3,
+    position: 'absolute',
+    bottom: 6,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.accentDim,
   },
   dotSelected: {
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.accent,
+  },
+  mainCard: {
+    backgroundColor: Colors.card,
+    borderTopRightRadius: 28,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    padding: 20,
+    marginTop: 0,
+    shadowColor: Colors.text,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    elevation: 2,
+  },
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  dateBlock: {
+    flex: 1,
+  },
+  monthText: {
+    fontFamily: Typography.heading,
+    fontSize: 30,
+    color: Colors.text,
+    marginBottom: 4,
+  },
+  dateText: {
+    fontFamily: Typography.bodyMedium,
+    fontSize: 18,
+    color: Colors.text,
+    letterSpacing: 0.5,
+  },
+  divider: {
+    width: 1,
+    height: 44,
+    backgroundColor: Colors.cardBorder,
+    marginHorizontal: 16,
+  },
+  timeBlock: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'flex-end',
+    flexWrap: 'nowrap',
+  },
+  timeNum: {
+    fontFamily: Typography.bodyMedium,
+    fontSize: 42,
+    color: Colors.text,
+  },
+  timeAmPm: {
+    fontFamily: Typography.bodySemibold,
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginLeft: 4,
   },
 });

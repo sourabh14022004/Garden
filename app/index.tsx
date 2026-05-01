@@ -161,9 +161,6 @@ export default function HomeScreen() {
           />
         }
       >
-        {/* Selected date label */}
-        <Text style={styles.selectedDateLabel}>{friendlyDate(selectedDate)}</Text>
-
         {entry && entry.content?.trim() ? (
           /* ── Existing entry card ── */
           <TouchableOpacity
@@ -339,9 +336,7 @@ const styles = StyleSheet.create({
   },
   calendarWrapper: {
     backgroundColor: Colors.bgDeep,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.cardBorder,
-    paddingVertical: 4,
+    paddingBottom: Spacing.lg,
   },
   scroll: {
     flex: 1,
@@ -349,13 +344,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: Spacing.lg,
     paddingBottom: 120,
-  },
-  selectedDateLabel: {
-    fontFamily: Typography.heading,
-    fontSize: 22,
-    color: Colors.text,
-    marginBottom: Spacing.md,
-    fontStyle: 'italic',
   },
   // Entry card
   entryCard: {
