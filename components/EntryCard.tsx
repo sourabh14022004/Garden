@@ -19,6 +19,10 @@ export default function EntryCard({ entry, onDelete }: Props) {
   const plant = getPlantForDate(entry.date);
   const { currentFont } = useFontStyle();
 
+  const [year, month, day] = entry.date.split('-');
+  const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+  const absoluteDate = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+
   return (
     <TouchableOpacity
       activeOpacity={0.8}
@@ -27,18 +31,20 @@ export default function EntryCard({ entry, onDelete }: Props) {
     >
       {/* Header row */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          {/* Plant thumbnail */}
-          <Image source={plant} style={styles.plantThumb} />
+        <View style={styles.headerTextStack}>
+          <Text style={styles.relativeDate}>{friendlyDate(entry.date)}</Text>
+          <Text style={[styles.moodLabel, { color: mood.color }]} numberOfLines={2}>
+            {mood.label}
+          </Text>
+          <Text style={styles.absoluteDate}>{absoluteDate}</Text>
+        </View>
+
+        <View style={styles.headerIcons}>
           <View style={[styles.moodBadge, { backgroundColor: mood.color + '20', borderColor: mood.color + '50' }]}>
             <Text style={styles.moodEmoji}>{mood.emoji}</Text>
           </View>
-          <View>
-            <Text style={styles.dateText}>{friendlyDate(entry.date)}</Text>
-            <Text style={styles.dateRaw}>{entry.date}</Text>
-          </View>
+          <Image source={plant} style={styles.plantThumb} />
         </View>
-        <Text style={[styles.moodLabel, { color: mood.color }]}>{mood.label}</Text>
       </View>
 
       {/* Divider */}
@@ -69,47 +75,51 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: Spacing.sm,
   },
-  headerLeft: {
-    flexDirection: 'row',
+  headerTextStack: {
+    flex: 1,
+    paddingRight: Spacing.md,
+  },
+  relativeDate: {
+    fontFamily: Typography.body,
+    fontSize: 13,
+    color: Colors.textMuted,
+    marginBottom: 2,
+  },
+  moodLabel: {
+    fontFamily: Typography.heading,
+    fontSize: 26,
+    lineHeight: 30,
+    letterSpacing: -0.5,
+    marginBottom: 4,
+  },
+  absoluteDate: {
+    fontFamily: Typography.body,
+    fontSize: 13,
+    color: Colors.textMuted,
+  },
+  headerIcons: {
     alignItems: 'center',
     gap: Spacing.sm,
   },
   plantThumb: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     resizeMode: 'contain',
   },
   moodBadge: {
-    width: 36,
-    height: 36,
+    width: 32,
+    height: 32,
     borderRadius: Radius.md,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
   moodEmoji: {
-    fontSize: 18,
-  },
-  dateText: {
-    fontFamily: Typography.bodySemibold,
-    fontSize: 14,
-    color: Colors.text,
-  },
-  dateRaw: {
-    fontFamily: Typography.body,
-    fontSize: 11,
-    color: Colors.textFaint,
-    marginTop: 1,
-  },
-  moodLabel: {
-    fontFamily: Typography.bodySemibold,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+    fontSize: 16,
   },
   divider: {
     height: 1,

@@ -327,7 +327,7 @@ export default function ForestScreen() {
             >
               {/* Show oldest to newest in left-to-right sequence */}
               {entries
-                .slice(0, 12)
+                .slice(0, 30)
                 .reverse()
                 .map((entry) => (
                   <TouchableOpacity
@@ -492,12 +492,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
-    gap: Spacing.xl,
+    gap: Spacing.md,
     alignItems: "flex-start",
   },
   legendItem: {
     alignItems: "center",
-    width: 64,
+    width: 52,
   },
   legendPlant: {
     width: 44,
