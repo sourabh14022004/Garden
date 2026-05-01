@@ -271,7 +271,7 @@ export default function ProfileScreen() {
             <Text style={styles.aboutName}>Garden</Text>
             <Text style={styles.aboutVersion}>Version 1.0.0</Text>
             <Text style={styles.aboutDesc}>
-              A mindful journaling app that grows with you. Every word you write plants a seed in your personal forest.
+              A mindful journaling app that grows with you. Every word you write plants a seed in your personal garden.
             </Text>
           </View>
         </View>

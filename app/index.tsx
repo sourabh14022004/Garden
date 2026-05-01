@@ -80,9 +80,9 @@ export default function HomeScreen() {
       onPanResponderMove: (_, gestureState) => {
         if (!hasNavigated.current) {
           if (gestureState.dx < -30) {
-            // Left swipe → Forest
+            // Left swipe → Garden
             hasNavigated.current = true;
-            router.push('/forest');
+            router.push('/garden');
           } else if (gestureState.dx > 30) {
             // Right swipe → Profile
             hasNavigated.current = true;
@@ -103,12 +103,12 @@ export default function HomeScreen() {
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
-            style={styles.forestBtn}
-            onPress={() => router.push('/forest')}
+            style={styles.gardenBtn}
+            onPress={() => router.push('/garden')}
             activeOpacity={0.7}
           >
-            <Text style={styles.forestBtnText}>Garden</Text>
-            <Text style={styles.forestBtnIcon}>🌿</Text>
+            <Text style={styles.gardenBtnText}>Garden</Text>
+            <Text style={styles.gardenBtnIcon}>🌿</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.historyBtn}
@@ -121,11 +121,11 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Forest stats strip */}
+      {/* Garden stats strip */}
       {totalPlants > 0 && (
         <TouchableOpacity
           style={styles.statsStrip}
-          onPress={() => router.push('/forest')}
+          onPress={() => router.push('/garden')}
           activeOpacity={0.85}
         >
           <View style={styles.statsRow}>
@@ -133,7 +133,7 @@ export default function HomeScreen() {
             <Text style={styles.statsText}>
               <Text style={styles.statsCount}>{totalPlants}</Text>
               {' '}
-              {totalPlants === 1 ? 'plant' : 'plants'} in your forest — tap to explore
+              {totalPlants === 1 ? 'plant' : 'plants'} in your garden — tap to explore
             </Text>
             <Text style={styles.statsArrow}>›</Text>
           </View>
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   profileBtnIcon: {
     fontSize: 16,
   },
-  forestBtn: {
+  gardenBtn: {
     paddingVertical: 7,
     paddingHorizontal: 14,
     borderRadius: Radius.full,
@@ -265,13 +265,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 4,
   },
-  forestBtnText: {
+  gardenBtnText: {
     fontFamily: Typography.bodySemibold,
     fontSize: 13,
     color: Colors.accent,
     lineHeight: 16,
   },
-  forestBtnIcon: {
+  gardenBtnIcon: {
     fontSize: 13,
     lineHeight: 16,
   },

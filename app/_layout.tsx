@@ -75,7 +75,7 @@ export default function RootLayout() {
               options={{ animation: 'slide_from_left' }}
             />
             <Stack.Screen name="history" />
-            <Stack.Screen name="forest" />
+            <Stack.Screen name="garden" />
             <Stack.Screen
               name="entry/[date]"
               options={{ animation: 'slide_from_bottom' }}

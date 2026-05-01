@@ -53,6 +53,78 @@ function chunkIntoRows(entries: JournalEntry[]): JournalEntry[][] {
   return rows;
 }
 
+// ── Floating particles ────────────────────────────────────────────────────────
+const NUM_PARTICLES = 12;
+function FloatingParticles() {
+  const particles = useRef(
+    Array.from({ length: NUM_PARTICLES }, (_, i) => ({
+      x: (Math.sin(i * 53.7) * 0.5 + 0.5) * SCREEN_W,
+      size: 3 + Math.abs(Math.cos(i * 17.3)) * 5,
+      riseDuration: 7000 + i * 900,
+      pauseDuration: 1800 + i * 350,
+      maxOpacity: 0.07 + Math.abs(Math.sin(i * 9.1)) * 0.1,
+      startDelay: i * 600,
+      pos: new Animated.Value(0),
+      opa: new Animated.Value(0),
+    }))
+  ).current;
+
+  useEffect(() => {
+    particles.forEach((p) => {
+      const fadeIn  = p.riseDuration * 0.18;
+      const fadeOut = p.riseDuration * 0.18;
+      const hold    = p.riseDuration - fadeIn - fadeOut;
+
+      // Opacity: fade-in → hold → fade-out → invisible pause (reset here)
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(p.startDelay),
+          Animated.timing(p.opa, { toValue: p.maxOpacity, duration: fadeIn,  useNativeDriver: true }),
+          Animated.timing(p.opa, { toValue: p.maxOpacity, duration: hold,    useNativeDriver: true }),
+          Animated.timing(p.opa, { toValue: 0,            duration: fadeOut, useNativeDriver: true }),
+          Animated.delay(p.pauseDuration), // particle is invisible; safe to reset
+        ])
+      ).start();
+
+      // Position: rise for exactly riseDuration, then pause (while invisible)
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(p.startDelay),
+          Animated.timing(p.pos, { toValue: 1, duration: p.riseDuration, useNativeDriver: true }),
+          Animated.delay(p.pauseDuration),
+        ])
+      ).start();
+    });
+  }, []);
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      {particles.map((p, i) => {
+        const translateY = p.pos.interpolate({
+          inputRange: [0, 1],
+          outputRange: [SCREEN_H * 0.75, -80],
+        });
+        return (
+          <Animated.View
+            key={i}
+            style={[
+              styles.particle,
+              {
+                left: p.x,
+                width: p.size,
+                height: p.size,
+                borderRadius: p.size / 2,
+                opacity: p.opa,
+                transform: [{ translateY }],
+              },
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+}
+
 // ── Animated plant cell ───────────────────────────────────────────────────────
 function PlantCell({
   entry,
@@ -67,8 +139,10 @@ function PlantCell({
 }) {
   const fade = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.4)).current;
+  const sway = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Entry animation
     Animated.parallel([
       Animated.timing(fade, {
         toValue: 1,
@@ -84,6 +158,18 @@ function PlantCell({
         stiffness: 130,
       }),
     ]).start();
+
+    // Sway loop — starts after entry animation
+    const swayAmp = 1.5 + Math.abs(Math.sin(delay * 0.01)) * 2;
+    const swayDur = 2800 + Math.abs(Math.cos(delay * 0.007)) * 1800;
+    setTimeout(() => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(sway, { toValue: swayAmp, duration: swayDur, useNativeDriver: true }),
+          Animated.timing(sway, { toValue: -swayAmp, duration: swayDur, useNativeDriver: true }),
+        ])
+      ).start();
+    }, delay + 500);
   }, []);
 
   return (
@@ -95,7 +181,14 @@ function PlantCell({
         { transform: [{ translateX: jitter.x }, { translateY: jitter.y }] },
       ]}
     >
-      <Animated.View style={{ opacity: fade, transform: [{ scale }] }}>
+      <Animated.View style={{
+        opacity: fade,
+        transform: [
+          { scale },
+          { rotate: sway.interpolate({ inputRange: [-4, 4], outputRange: ['-4deg', '4deg'] }) },
+        ],
+        transformOrigin: 'bottom center',
+      }}>
         <Image
           source={getPlantForDate(entry.date)}
           style={{
@@ -108,6 +201,22 @@ function PlantCell({
     </TouchableOpacity>
   );
 }
+
+
+// ── Static empty dot (reference placeholder) ─────────────────────────────────
+function EmptyDot({ jitter }: { jitter: { x: number; y: number } }) {
+  return (
+    <View
+      style={[
+        styles.emptySlot,
+        { transform: [{ translateX: jitter.x }, { translateY: jitter.y }] },
+      ]}
+    >
+      <View style={styles.emptyDot} />
+    </View>
+  );
+}
+
 
 // ── Plant row ─────────────────────────────────────────────────────────────────
 function PlantRow({
@@ -140,26 +249,15 @@ function PlantRow({
             onPress={() => onPlantPress(entry)}
           />
         ) : (
-          // Empty slot — subtle dotted placeholder with organic jitter
-          <View
-            key={`empty-${i}`}
-            style={[
-              styles.emptySlot,
-              {
-                transform: [{ translateX: jitter.x }, { translateY: jitter.y }],
-              },
-            ]}
-          >
-            <View style={styles.emptyDot} />
-          </View>
+          <EmptyDot key={`empty-${i}`} jitter={jitter} />
         );
       })}
     </View>
   );
 }
 
-// ── Empty forest ──────────────────────────────────────────────────────────────
-function EmptyForest({ onWrite }: { onWrite: () => void }) {
+// ── Empty garden ──────────────────────────────────────────────────────────────
+function EmptyGarden({ onWrite }: { onWrite: () => void }) {
   const fade = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(fade, {
@@ -174,7 +272,7 @@ function EmptyForest({ onWrite }: { onWrite: () => void }) {
       <Text style={styles.emptyEmoji}>🌱</Text>
       <Text style={styles.emptyTitle}>Your garden is empty</Text>
       <Text style={styles.emptySubtitle}>
-        Write your first entry to plant{"\n"}the seed of your forest.
+        Write your first entry to plant{"\n"}the seed of your garden.
       </Text>
       <TouchableOpacity
         style={styles.emptyBtn}
@@ -189,7 +287,7 @@ function EmptyForest({ onWrite }: { onWrite: () => void }) {
 }
 
 // ── Main screen ───────────────────────────────────────────────────────────────
-export default function ForestScreen() {
+export default function GardenScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const scrollRef = useRef<ScrollView>(null);
@@ -285,28 +383,31 @@ export default function ForestScreen() {
 
       {/* ── Garden content ────────────────────────────────────────────── */}
       {loading ? null : entries.length === 0 ? (
-        <EmptyForest onWrite={() => router.push(`/entry/${todayKey}`)} />
+        <EmptyGarden onWrite={() => router.push(`/entry/${todayKey}`)} />
       ) : (
-        <ScrollView
-          ref={scrollRef}
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Spacer so plants don't hide behind header */}
-          <View style={{ height: insets.top + 80 }} />
+        <>
+          <FloatingParticles />
+          <ScrollView
+            ref={scrollRef}
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Spacer so plants don't hide behind header */}
+            <View style={{ height: insets.top + 80 }} />
 
-          {/* Plant grid — oldest rows at top, newest at bottom */}
-          {rows.map((rowEntries, rowIdx) => (
-            <PlantRow
-              key={rowIdx}
-              rowEntries={rowEntries}
-              rowIndex={rowIdx}
-              totalRows={rows.length}
-              onPlantPress={(entry) => router.push(`/entry/${entry.date}`)}
-            />
-          ))}
-        </ScrollView>
+            {/* Plant grid — oldest rows at top, newest at bottom */}
+            {rows.map((rowEntries, rowIdx) => (
+              <PlantRow
+                key={rowIdx}
+                rowEntries={rowEntries}
+                rowIndex={rowIdx}
+                totalRows={rows.length}
+                onPlantPress={(entry) => router.push(`/entry/${entry.date}`)}
+              />
+            ))}
+          </ScrollView>
+        </>
       )}
 
       {/* Legend pinned to bottom bar */}
@@ -469,6 +570,10 @@ const styles = StyleSheet.create({
     height: 5,
     borderRadius: 3,
     backgroundColor: Colors.cardBorder,
+  },
+  particle: {
+    position: "absolute",
+    backgroundColor: Colors.accent,
   },
 
   // Ground acts as the top border of the legend wrapper

@@ -1,10 +1,10 @@
 # Garden 🌿
 
-Garden is a beautiful, distraction-free daily note-taking and journaling application built with React Native and Expo. Instead of just logging text, Garden turns your thoughts, moods, and reflections into a growing virtual forest.
+Garden is a beautiful, distraction-free daily note-taking and journaling application built with React Native and Expo. Instead of just logging text, Garden turns your thoughts, moods, and reflections into a growing virtual garden.
 
 ## 📖 Use Case
 
-In today's fast-paced world, maintaining a daily journaling habit can feel like a chore. Garden gamifies the experience of self-reflection. Every time you write an entry, you plant a "seed" that blossoms into a unique plant in your virtual forest. 
+In today's fast-paced world, maintaining a daily journaling habit can feel like a chore. Garden gamifies the experience of self-reflection. Every time you write an entry, you plant a "seed" that blossoms into a unique plant in your virtual garden. 
 
 Whether you want to track your daily mood, jot down quick ideas, or write extensive daily reflections, Garden provides a peaceful environment to do so. Over time, your consistent habit visually manifests into a dense grid of plants, rewarding you for your dedication to logging your days.
 
@@ -12,7 +12,7 @@ Whether you want to track your daily mood, jot down quick ideas, or write extens
 
 - **Daily Journaling**: Write entries tied to specific dates in a clean, focused editor.
 - **Mood Tracking**: Tag your daily entries with emojis and mood labels (e.g., Happy, Calm, Anxious, Sad) indicating how you felt.
-- **The Forest View**: Every completed entry adds a new, uniquely generated plant to your "Forest". Watch your grid of plants grow as your writing habit consistency improves.
+- **The Garden View**: Every completed entry adds a new, uniquely generated plant to your "Garden". Watch your grid of plants grow as your writing habit consistency improves.
 - **Typography & Customization**: Supports multiple elegant, distraction-free fonts to personalize your writing experience perfectly. 
 - **History Tracking**: Easily look back at past entries using an intuitive calendar strip and a dedicated history view.
 - **Local Storage**: Your personal entries remain completely private and are saved locally on your device via AsyncStorage.
