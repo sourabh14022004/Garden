@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Image,
   PanResponder,
+  Animated,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,6 +42,34 @@ export default function HomeScreen() {
   const [markedDates, setMarkedDates] = useState<Set<string>>(new Set());
   const [totalPlants, setTotalPlants] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  
+  const [showToast, setShowToast] = useState(false);
+  const prevTotalPlants = React.useRef<number | null>(null);
+  const toastAnim = React.useRef(new Animated.Value(-150)).current;
+
+  useEffect(() => {
+    if (prevTotalPlants.current !== null && totalPlants > prevTotalPlants.current) {
+      setShowToast(true);
+      Animated.spring(toastAnim, {
+        toValue: 12,
+        useNativeDriver: true,
+        damping: 14,
+        stiffness: 100,
+      }).start();
+
+      const timer = setTimeout(() => {
+        Animated.timing(toastAnim, {
+          toValue: -150,
+          duration: 300,
+          useNativeDriver: true,
+        }).start(() => setShowToast(false));
+      }, 4000);
+      
+      prevTotalPlants.current = totalPlants;
+      return () => clearTimeout(timer);
+    }
+    prevTotalPlants.current = totalPlants;
+  }, [totalPlants]);
 
   const load = useCallback(async () => {
     const [e, dates, all] = await Promise.all([
@@ -121,23 +150,28 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      {/* Garden stats strip */}
-      {totalPlants > 0 && (
-        <TouchableOpacity
-          style={styles.statsStrip}
-          onPress={() => router.push('/garden')}
-          activeOpacity={0.85}
-        >
-          <View style={styles.statsRow}>
-            <Image source={getPlantForDate(todayKey())} style={styles.statPlantThumb} />
-            <Text style={styles.statsText}>
-              <Text style={styles.statsCount}>{totalPlants}</Text>
-              {' '}
-              {totalPlants === 1 ? 'plant' : 'plants'} in your garden — tap to explore
-            </Text>
-            <Text style={styles.statsArrow}>›</Text>
-          </View>
-        </TouchableOpacity>
+      {/* Garden stats strip (now a Toast) */}
+      {showToast && (
+        <Animated.View style={[styles.toastContainer, { transform: [{ translateY: toastAnim }] }]}>
+          <TouchableOpacity
+            style={styles.statsStrip}
+            onPress={() => {
+              router.push('/garden');
+              setShowToast(false);
+            }}
+            activeOpacity={0.85}
+          >
+            <View style={styles.statsRow}>
+              <Image source={todayPlant} style={styles.statPlantThumb} />
+              <Text style={styles.statsText}>
+                <Text style={styles.statsCount}>{totalPlants}</Text>
+                {' '}
+                {totalPlants === 1 ? 'plant' : 'plants'} in your garden — tap to explore
+              </Text>
+              <Text style={styles.statsArrow}>›</Text>
+            </View>
+          </TouchableOpacity>
+        </Animated.View>
       )}
 
       {/* Calendar */}
@@ -299,15 +333,22 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   // Stats strip
+  toastContainer: {
+    position: 'absolute',
+    top: 65,
+    left: 0,
+    right: 0,
+    zIndex: 100,
+  },
   statsStrip: {
     marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
     backgroundColor: Colors.accentSoft,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.accentDim + '80',
     paddingHorizontal: Spacing.md,
-    paddingVertical: 8,
+    paddingVertical: 10,
+    ...Shadows.card,
   },
   statsRow: {
     flexDirection: 'row',
