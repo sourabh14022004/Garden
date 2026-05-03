@@ -59,9 +59,10 @@ export default function CalendarStrip({ selectedDate, markedDates, onSelectDate 
     return () => clearInterval(timer);
   }, []);
 
-  const timeString = time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }).split(' ');
-  const tNum = timeString[0];
-  const tAmPm = timeString[1] || '';
+  const timeString = time.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const match = timeString.match(/^(\d+:\d+)\s*([a-zA-Z]*)/);
+  const tNum = match ? match[1] : timeString;
+  const tAmPm = match && match[2] ? match[2] : '';
 
   return (
     <View style={styles.container}>
@@ -263,7 +264,7 @@ const styles = StyleSheet.create({
   },
   timeBlock: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'flex-start',
     justifyContent: 'flex-end',
     flexWrap: 'nowrap',
   },
@@ -271,11 +272,13 @@ const styles = StyleSheet.create({
     fontFamily: Typography.bodyMedium,
     fontSize: 42,
     color: Colors.text,
+    lineHeight: 48,
   },
   timeAmPm: {
     fontFamily: Typography.bodySemibold,
     fontSize: 12,
     color: Colors.textMuted,
-    marginLeft: 4,
+    marginLeft: 2,
+    marginTop: 6,
   },
 });
