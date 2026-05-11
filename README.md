@@ -27,11 +27,20 @@ Whether you want to track your daily mood, jot down quick ideas, or write extens
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### Download the App (Android)
+
+If you just want to install and try the app on your Android phone, you can download the `.apk` file directly from our **[GitHub Releases](../../releases)** page.
+
+1. Download the latest `Garden.apk` file to your phone.
+2. Tap the file to install it (you may need to allow "Install from unknown sources" in your Android settings).
+
+### Development Setup
+
+#### Prerequisites
 
 Make sure you have Node.js installed, along with either the Expo Go app on your phone or an emulator/simulator setup on your machine.
 
-### Installation
+#### Local Installation
 
 1. Clone the repository and navigate to the project folder:
    ```bash

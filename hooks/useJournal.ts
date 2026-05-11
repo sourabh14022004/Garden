@@ -1,11 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export interface Attachment {
+  id: string;
+  uri: string;
+  type: 'image' | 'document';
+  name: string;
+}
+
 export interface JournalEntry {
   date: string;      // "YYYY-MM-DD"
   content: string;
   mood: number;      // 0–4
   wordCount: number;
   updatedAt: string; // ISO timestamp
+  attachments?: Attachment[];
 }
 
 const STORAGE_KEY = '@garden:entries';

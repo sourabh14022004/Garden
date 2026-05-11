@@ -10,8 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MoodPicker from '../../components/MoodPicker';
 import FontPicker from '../../components/FontPicker';
@@ -25,6 +28,7 @@ import {
   countWords,
   friendlyDate,
   JournalEntry,
+  Attachment,
 } from '../../hooks/useJournal';
 
 export default function EntryScreen() {
@@ -36,6 +40,7 @@ export default function EntryScreen() {
   const [content, setContent] = useState('');
   const [mood, setMood] = useState(2);
   const [wordCount, setWordCount] = useState(0);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [showFontPicker, setShowFontPicker] = useState(false);
@@ -55,6 +60,7 @@ export default function EntryScreen() {
         setContent(e.content);
         setMood(e.mood);
         setWordCount(e.wordCount);
+        setAttachments(e.attachments || []);
       }
     });
   }, [date]);
@@ -80,10 +86,10 @@ export default function EntryScreen() {
 
   // Auto-save with debounce
   const triggerSave = useCallback(
-    (text: string, currentMood: number) => {
+    (text: string, currentMood: number, currentAttachments: Attachment[]) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
-        if (!text.trim()) {
+        if (!text.trim() && currentAttachments.length === 0) {
           await deleteEntry(date!);
           return;
         }
@@ -94,6 +100,7 @@ export default function EntryScreen() {
           mood: currentMood,
           wordCount: wc,
           updatedAt: new Date().toISOString(),
+          attachments: currentAttachments,
         };
         await saveEntry(entry);
         setSaved(true);
@@ -107,7 +114,7 @@ export default function EntryScreen() {
     setContent(text);
     setWordCount(countWords(text));
     setSaved(false);
-    triggerSave(text, mood);
+    triggerSave(text, mood, attachments);
 
     if (soundEnabled) {
       setIsTyping(true);
@@ -120,13 +127,13 @@ export default function EntryScreen() {
 
   const handleMoodChange = (m: number) => {
     setMood(m);
-    triggerSave(content, m);
+    triggerSave(content, m, attachments);
   };
 
   const handleManualSave = async () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     
-    if (!content.trim()) {
+    if (!content.trim() && attachments.length === 0) {
       await deleteEntry(date!);
       router.back();
       return;
@@ -134,7 +141,7 @@ export default function EntryScreen() {
 
     setSaving(true);
     const wc = countWords(content);
-    await saveEntry({ date: date!, content, mood, wordCount: wc, updatedAt: new Date().toISOString() });
+    await saveEntry({ date: date!, content, mood, wordCount: wc, updatedAt: new Date().toISOString(), attachments });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -156,6 +163,26 @@ export default function EntryScreen() {
         },
       ]
     );
+  };
+
+  const handleAttach = async () => {
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: false,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      const newAtt: Attachment = {
+        id: Date.now().toString(),
+        uri: asset.uri,
+        type: 'image',
+        name: asset.fileName || 'image.jpg',
+      };
+      const newAttachments = [...attachments, newAtt];
+      setAttachments(newAttachments);
+      triggerSave(content, mood, newAttachments);
+    }
   };
 
   const currentSaveStatus = saving ? 'Saving…' : saved ? '✓ Saved' : 'Save';
@@ -241,6 +268,34 @@ export default function EntryScreen() {
             textAlignVertical="top"
             selectionColor={Colors.accent}
           />
+
+          {/* Attachments Section */}
+          {attachments.length > 0 && (
+            <View style={styles.attachmentsContainer}>
+              {attachments.map((att) => (
+                <View key={att.id} style={styles.attachmentItem}>
+                  {att.type === 'image' ? (
+                    <Image source={{ uri: att.uri }} style={styles.attachmentImage} />
+                  ) : (
+                    <View style={styles.attachmentDoc}>
+                      <Text style={styles.attachmentDocIcon}>📄</Text>
+                      <Text style={styles.attachmentDocName} numberOfLines={1}>{att.name}</Text>
+                    </View>
+                  )}
+                  <TouchableOpacity 
+                    style={styles.removeAttachmentBtn} 
+                    onPress={() => {
+                      const newAttachments = attachments.filter(a => a.id !== att.id);
+                      setAttachments(newAttachments);
+                      triggerSave(content, mood, newAttachments);
+                    }}
+                  >
+                    <Text style={styles.removeAttachmentText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
         </ScrollView>
 
         {/* Bottom bar */}
@@ -262,6 +317,15 @@ export default function EntryScreen() {
             <Text style={styles.soundBtnIcon}>
               {soundEnabled ? '🔊' : '🔇'}
             </Text>
+          </TouchableOpacity>
+
+          {/* Attach button */}
+          <TouchableOpacity
+            style={styles.attachBtn}
+            onPress={handleAttach}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.attachBtnIcon}>📎</Text>
           </TouchableOpacity>
 
           {/* Font picker button */}
@@ -427,5 +491,74 @@ const styles = StyleSheet.create({
   },
   deleteBtnText: {
     fontSize: 15,
+  },
+  attachBtn: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  attachBtnIcon: {
+    fontSize: 14,
+  },
+  attachmentsContainer: {
+    marginTop: Spacing.md,
+    gap: Spacing.sm,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  attachmentItem: {
+    position: 'relative',
+    marginRight: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  attachmentImage: {
+    width: 100,
+    height: 100,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  attachmentDoc: {
+    width: 100,
+    height: 100,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.sm,
+  },
+  attachmentDocIcon: {
+    fontSize: 32,
+    marginBottom: Spacing.xs,
+  },
+  attachmentDocName: {
+    fontFamily: Typography.body,
+    fontSize: 10,
+    color: Colors.text,
+    textAlign: 'center',
+  },
+  removeAttachmentBtn: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: Colors.danger,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: Colors.bg,
+  },
+  removeAttachmentText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });

@@ -16,6 +16,7 @@
       "supportsTablet": false
     },
     "android": {
+      "package": "com.sourabh.garden",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0F1A0F"
@@ -34,6 +35,12 @@
           "fonts": []
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "2132f8bb-6efd-4451-9021-cc655c33bfb6"
+      }
+    }
   }
 }

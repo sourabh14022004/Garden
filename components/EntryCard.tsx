@@ -57,7 +57,12 @@ export default function EntryCard({ entry, onDelete }: Props) {
 
       {/* Footer */}
       <View style={styles.footer}>
-        <Text style={styles.wordCount}>{entry.wordCount} words</Text>
+        <View style={styles.footerLeft}>
+          <Text style={styles.wordCount}>{entry.wordCount} words</Text>
+          {entry.attachments && entry.attachments.length > 0 && (
+            <Text style={styles.attachmentCount}> • {entry.attachments.length} attachment{entry.attachments.length > 1 ? 's' : ''}</Text>
+          )}
+        </View>
         <Text style={styles.editHint}>Tap to edit →</Text>
       </View>
     </TouchableOpacity>
@@ -138,10 +143,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: Spacing.sm,
   },
+  footerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   wordCount: {
     fontFamily: Typography.body,
     fontSize: 12,
     color: Colors.textFaint,
+  },
+  attachmentCount: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: Colors.accentDim,
   },
   editHint: {
     fontFamily: Typography.bodyMedium,
