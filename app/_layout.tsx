@@ -26,11 +26,14 @@ import {
   CrimsonPro_600SemiBold,
 } from '@expo-google-fonts/crimson-pro';
 import { View, ActivityIndicator } from 'react-native';
+import { useState } from 'react';
+import LockScreen from '../components/LockScreen';
 import { Colors } from '../constants/theme';
 import { FontProvider } from '../hooks/useFontStyle';
 import { AmbientSoundProvider } from '../hooks/useAmbientSound';
 
 export default function RootLayout() {
+  const [isUnlocked, setIsUnlocked] = useState(false);
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -81,6 +84,7 @@ export default function RootLayout() {
               options={{ animation: 'slide_from_bottom' }}
             />
           </Stack>
+          {!isUnlocked && <LockScreen onUnlock={() => setIsUnlocked(true)} />}
         </AmbientSoundProvider>
       </FontProvider>
   );

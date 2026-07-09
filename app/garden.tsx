@@ -26,6 +26,7 @@ import {
 } from "../hooks/useJournal";
 import { getPlantForDate } from "../hooks/usePlants";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
+import * as LocalAuthentication from "expo-local-authentication";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 const currentYear = new Date().getFullYear();
@@ -311,6 +312,24 @@ export default function GardenScreen() {
     }, [load]),
   );
 
+  const handleEntryPress = async (entry: JournalEntry) => {
+    if (entry.isLocked) {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      
+      if (hasHardware && isEnrolled) {
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Unlock Entry',
+          fallbackLabel: 'Use Passcode',
+        });
+        if (!result.success) {
+          return;
+        }
+      }
+    }
+    router.push(`/entry/${entry.date}`);
+  };
+
   // Load entries when screen comes into focus
 
   const rows = chunkIntoRows(entries);
@@ -403,7 +422,7 @@ export default function GardenScreen() {
                 rowEntries={rowEntries}
                 rowIndex={rowIdx}
                 totalRows={rows.length}
-                onPlantPress={(entry) => router.push(`/entry/${entry.date}`)}
+                onPlantPress={handleEntryPress}
               />
             ))}
           </ScrollView>
@@ -434,7 +453,7 @@ export default function GardenScreen() {
                   <TouchableOpacity
                     key={entry.date}
                     style={styles.legendItem}
-                    onPress={() => router.push(`/entry/${entry.date}`)}
+                    onPress={() => handleEntryPress(entry)}
                     activeOpacity={0.7}
                   >
                     <Image

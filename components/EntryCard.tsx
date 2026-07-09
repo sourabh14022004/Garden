@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { Ionicons } from '@expo/vector-icons';
 import { Colors, MOODS, Radius, Spacing, Typography } from '../constants/theme';
 import { JournalEntry, friendlyDate } from '../hooks/useJournal';
 import { getPlantForDate } from '../hooks/usePlants';
@@ -23,10 +25,28 @@ export default function EntryCard({ entry, onDelete }: Props) {
   const dateObj = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
   const absoluteDate = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
 
+  const handlePress = async () => {
+    if (entry.isLocked) {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      
+      if (hasHardware && isEnrolled) {
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Unlock Entry',
+          fallbackLabel: 'Use Passcode',
+        });
+        if (!result.success) {
+          return;
+        }
+      }
+    }
+    router.push(`/entry/${entry.date}`);
+  };
+
   return (
     <TouchableOpacity
       activeOpacity={0.8}
-      onPress={() => router.push(`/entry/${entry.date}`)}
+      onPress={handlePress}
       style={styles.card}
     >
       {/* Header row */}
@@ -52,7 +72,7 @@ export default function EntryCard({ entry, onDelete }: Props) {
 
       {/* Content preview — in the user's chosen writing font */}
       <Text style={[styles.preview, { fontFamily: currentFont.bodyFont }]}>
-        {preview}{isLong ? '…' : ''}
+        {entry.isLocked ? 'This entry is locked.' : `${preview}${isLong ? '…' : ''}`}
       </Text>
 
       {/* Footer */}
@@ -63,7 +83,10 @@ export default function EntryCard({ entry, onDelete }: Props) {
             <Text style={styles.attachmentCount}> • {entry.attachments.length} attachment{entry.attachments.length > 1 ? 's' : ''}</Text>
           )}
         </View>
-        <Text style={styles.editHint}>Tap to edit →</Text>
+        <View style={styles.footerRight}>
+          {entry.isLocked && <Ionicons name="lock-closed" size={14} color={Colors.accentDim} style={styles.lockIcon} />}
+          <Text style={styles.editHint}>Tap to edit →</Text>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -161,5 +184,12 @@ const styles = StyleSheet.create({
     fontFamily: Typography.bodyMedium,
     fontSize: 12,
     color: Colors.accentDim,
+  },
+  footerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  lockIcon: {
+    marginRight: 4,
   },
 });

@@ -45,6 +45,7 @@ export default function EntryScreen() {
   const [saved, setSaved] = useState(false);
   const [showFontPicker, setShowFontPicker] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [isLocked, setIsLocked] = useState(false);
   const [displaySaveStatus, setDisplaySaveStatus] = useState('Save');
   
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,6 +62,7 @@ export default function EntryScreen() {
         setMood(e.mood);
         setWordCount(e.wordCount);
         setAttachments(e.attachments || []);
+        setIsLocked(!!e.isLocked);
       }
     });
   }, [date]);
@@ -86,7 +88,7 @@ export default function EntryScreen() {
 
   // Auto-save with debounce
   const triggerSave = useCallback(
-    (text: string, currentMood: number, currentAttachments: Attachment[]) => {
+    (text: string, currentMood: number, currentAttachments: Attachment[], currentIsLocked: boolean) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
         if (!text.trim() && currentAttachments.length === 0) {
@@ -101,6 +103,7 @@ export default function EntryScreen() {
           wordCount: wc,
           updatedAt: new Date().toISOString(),
           attachments: currentAttachments,
+          isLocked: currentIsLocked,
         };
         await saveEntry(entry);
         setSaved(true);
@@ -114,7 +117,7 @@ export default function EntryScreen() {
     setContent(text);
     setWordCount(countWords(text));
     setSaved(false);
-    triggerSave(text, mood, attachments);
+    triggerSave(text, mood, attachments, isLocked);
 
     if (soundEnabled) {
       setIsTyping(true);
@@ -127,7 +130,13 @@ export default function EntryScreen() {
 
   const handleMoodChange = (m: number) => {
     setMood(m);
-    triggerSave(content, m, attachments);
+    triggerSave(content, m, attachments, isLocked);
+  };
+
+  const handleLockToggle = () => {
+    const newIsLocked = !isLocked;
+    setIsLocked(newIsLocked);
+    triggerSave(content, mood, attachments, newIsLocked);
   };
 
   const handleManualSave = async () => {
@@ -141,7 +150,7 @@ export default function EntryScreen() {
 
     setSaving(true);
     const wc = countWords(content);
-    await saveEntry({ date: date!, content, mood, wordCount: wc, updatedAt: new Date().toISOString(), attachments });
+    await saveEntry({ date: date!, content, mood, wordCount: wc, updatedAt: new Date().toISOString(), attachments, isLocked });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -181,7 +190,7 @@ export default function EntryScreen() {
       };
       const newAttachments = [...attachments, newAtt];
       setAttachments(newAttachments);
-      triggerSave(content, mood, newAttachments);
+      triggerSave(content, mood, newAttachments, isLocked);
     }
   };
 
@@ -287,7 +296,7 @@ export default function EntryScreen() {
                     onPress={() => {
                       const newAttachments = attachments.filter(a => a.id !== att.id);
                       setAttachments(newAttachments);
-                      triggerSave(content, mood, newAttachments);
+                      triggerSave(content, mood, newAttachments, isLocked);
                     }}
                   >
                     <Text style={styles.removeAttachmentText}>✕</Text>
@@ -316,6 +325,20 @@ export default function EntryScreen() {
           >
             <Text style={styles.soundBtnIcon}>
               {soundEnabled ? '🔊' : '🔇'}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Lock toggle */}
+          <TouchableOpacity
+            style={[
+              styles.soundBtn,
+              isLocked && styles.soundBtnActive,
+            ]}
+            onPress={handleLockToggle}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.soundBtnIcon}>
+              {isLocked ? '🔒' : '🔓'}
             </Text>
           </TouchableOpacity>
 

@@ -14,6 +14,7 @@ export interface JournalEntry {
   wordCount: number;
   updatedAt: string; // ISO timestamp
   attachments?: Attachment[];
+  isLocked?: boolean;
 }
 
 const STORAGE_KEY = '@garden:entries';

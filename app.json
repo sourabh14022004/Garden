@@ -4,11 +4,11 @@
     "slug": "garden",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./icon/appstore.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./icon/appstore.png",
       "resizeMode": "contain",
       "backgroundColor": "#0F1A0F"
     },
@@ -18,7 +18,7 @@
     "android": {
       "package": "com.sourabh.garden",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./icon/appstore.png",
         "backgroundColor": "#0F1A0F"
       },
       "edgeToEdgeEnabled": true

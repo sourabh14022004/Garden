@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { Ionicons } from '@expo/vector-icons';
 import CalendarStrip from '../components/CalendarStrip';
 import FloatingButton from '../components/FloatingButton';
 import { Colors, MOODS, Radius, Shadows, Spacing, Typography } from '../constants/theme';
@@ -100,6 +102,24 @@ export default function HomeScreen() {
   const mood = entry ? MOODS[entry.mood] : null;
   const isToday = selectedDate === todayKey();
   const todayPlant = getPlantForDate(selectedDate);
+
+  const handleEntryPress = async () => {
+    if (entry?.isLocked) {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      
+      if (hasHardware && isEnrolled) {
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Unlock Entry',
+          fallbackLabel: 'Use Passcode',
+        });
+        if (!result.success) {
+          return;
+        }
+      }
+    }
+    router.push(`/entry/${selectedDate}`);
+  };
 
   const swipeHandlers = React.useRef(
     PanResponder.create({
@@ -199,7 +219,7 @@ export default function HomeScreen() {
           /* ── Existing entry card ── */
           <TouchableOpacity
             activeOpacity={0.85}
-            onPress={() => router.push(`/entry/${selectedDate}`)}
+            onPress={handleEntryPress}
             style={styles.entryCard}
           >
             {/* Plant + Mood row */}
@@ -215,13 +235,16 @@ export default function HomeScreen() {
 
             {/* Entry preview */}
             <Text style={styles.entryPreview} numberOfLines={6}>
-              {entry.content}
+              {entry.isLocked ? 'This entry is locked.' : entry.content}
             </Text>
 
             {/* Footer */}
             <View style={styles.entryFooter}>
               <Text style={styles.wordCountText}>{entry.wordCount} words planted</Text>
-              <Text style={styles.editText}>Tap to continue →</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {entry.isLocked && <Ionicons name="lock-closed" size={14} color={Colors.accentDim} style={{ marginRight: 4 }} />}
+                <Text style={styles.editText}>Tap to continue →</Text>
+              </View>
             </View>
           </TouchableOpacity>
         ) : (
