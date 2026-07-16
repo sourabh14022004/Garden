@@ -25,6 +25,8 @@ import {
   getDatesWithEntries,
   getAllEntries,
   JournalEntry,
+  isEntryNonEmpty,
+  getEntryDisplay,
 } from '../hooks/useJournal';
 import { getPlantForDate } from '../hooks/usePlants';
 
@@ -81,7 +83,7 @@ export default function HomeScreen() {
     ]);
     setEntry(e);
     setMarkedDates(dates);
-    setTotalPlants(all.filter((x) => x.content?.trim()).length);
+    setTotalPlants(all.filter(isEntryNonEmpty).length);
   }, [selectedDate]);
 
   const hasNavigated = React.useRef(false);
@@ -110,7 +112,7 @@ export default function HomeScreen() {
       
       if (hasHardware && isEnrolled) {
         const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: 'Unlock Entry',
+          promptMessage: 'Garden is encrypted',
           fallbackLabel: 'Use Passcode',
         });
         if (!result.success) {
@@ -146,9 +148,9 @@ export default function HomeScreen() {
       <SafeAreaView style={styles.safe} edges={['top']} {...swipeHandlers.panHandlers}>
       {/* Header */}
       <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>{getGreeting()}</Text>
-          <Text style={styles.tagline}>Your garden is growing 🌱</Text>
+        <View style={styles.headerLeft}>
+          <Text style={styles.greeting} numberOfLines={1} adjustsFontSizeToFit>{getGreeting()}</Text>
+          <Text style={styles.tagline} numberOfLines={1}>Your garden is growing 🌱</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity
@@ -215,7 +217,7 @@ export default function HomeScreen() {
           />
         }
       >
-        {entry && entry.content?.trim() ? (
+        {entry && isEntryNonEmpty(entry) ? (
           /* ── Existing entry card ── */
           <TouchableOpacity
             activeOpacity={0.85}
@@ -225,18 +227,34 @@ export default function HomeScreen() {
             {/* Plant + Mood row */}
             <View style={styles.moodRow}>
               <Image source={todayPlant} style={styles.plantBadge} />
-              <View style={[styles.moodBadge, { backgroundColor: mood!.color + '25', borderColor: mood!.color + '60' }]}>
-                <Text style={styles.moodEmoji}>{mood!.emoji}</Text>
-              </View>
-              <Text style={[styles.moodLabelText, { color: mood!.color }]}>
-                Feeling {mood!.label}
-              </Text>
+              {!entry.isLocked && (
+                <>
+                  <View style={[styles.moodBadge, { backgroundColor: mood!.color + '25', borderColor: mood!.color + '60' }]}>
+                    <Text style={styles.moodEmoji}>{mood!.emoji}</Text>
+                  </View>
+                  <Text style={[styles.moodLabelText, { color: mood!.color }]}>
+                    Feeling {mood!.label}
+                  </Text>
+                </>
+              )}
             </View>
 
             {/* Entry preview */}
-            <Text style={styles.entryPreview} numberOfLines={6}>
-              {entry.isLocked ? 'This entry is locked.' : entry.content}
-            </Text>
+            {(() => {
+              const { title: displayTitle, preview: displayPreview } = getEntryDisplay(entry);
+              return (
+                <>
+                  {displayTitle ? (
+                    <Text style={styles.entryTitle} numberOfLines={1}>
+                      {displayTitle}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.entryPreview} numberOfLines={1}>
+                    {entry.isLocked ? 'This entry is locked.' : displayPreview}
+                  </Text>
+                </>
+              );
+            })()}
 
             {/* Footer */}
             <View style={styles.entryFooter}>
@@ -280,6 +298,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.sm,
+  },
+  headerLeft: {
+    flex: 1,
+    marginRight: Spacing.md,
   },
   greeting: {
     fontFamily: Typography.heading,
@@ -443,6 +465,12 @@ const styles = StyleSheet.create({
   moodLabelText: {
     fontFamily: Typography.bodySemibold,
     fontSize: 15,
+  },
+  entryTitle: {
+    fontFamily: Typography.heading,
+    fontSize: 18,
+    color: Colors.text,
+    marginBottom: 6,
   },
   entryPreview: {
     fontFamily: Typography.body,

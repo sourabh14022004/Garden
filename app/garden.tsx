@@ -23,6 +23,7 @@ import {
   JournalEntry,
   friendlyDate,
   shortFriendlyDate,
+  isEntryNonEmpty,
 } from "../hooks/useJournal";
 import { getPlantForDate } from "../hooks/usePlants";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
@@ -298,7 +299,7 @@ export default function GardenScreen() {
 
   const load = useCallback(async () => {
     const all = await getAllEntries();
-    setEntries(all.filter((e) => e.content?.trim()));
+    setEntries(all.filter(isEntryNonEmpty));
     setLoading(false);
   }, []);
 
