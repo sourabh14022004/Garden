@@ -26,7 +26,8 @@ import {
   CrimsonPro_600SemiBold,
 } from '@expo-google-fonts/crimson-pro';
 import { View, ActivityIndicator } from 'react-native';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import LockScreen from '../components/LockScreen';
 import { Colors } from '../constants/theme';
 import { FontProvider } from '../hooks/useFontStyle';
@@ -34,6 +35,7 @@ import { AmbientSoundProvider } from '../hooks/useAmbientSound';
 
 export default function RootLayout() {
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [loadingSettings, setLoadingSettings] = useState(true);
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
     Inter_500Medium,
@@ -51,7 +53,25 @@ export default function RootLayout() {
     CrimsonPro_600SemiBold,
   });
 
-  if (!fontsLoaded) {
+  useEffect(() => {
+    async function loadAppLockSetting() {
+      try {
+        const val = await AsyncStorage.getItem('@garden:app_lock');
+        if (val === 'true') {
+          setIsUnlocked(false);
+        } else {
+          setIsUnlocked(true);
+        }
+      } catch {
+        setIsUnlocked(true);
+      } finally {
+        setLoadingSettings(false);
+      }
+    }
+    loadAppLockSetting();
+  }, []);
+
+  if (!fontsLoaded || loadingSettings) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.bg, alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color={Colors.accent} />

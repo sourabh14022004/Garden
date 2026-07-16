@@ -15,6 +15,7 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MoodPicker from '../../components/MoodPicker';
 import FontPicker from '../../components/FontPicker';
@@ -133,10 +134,51 @@ export default function EntryScreen() {
     triggerSave(content, m, attachments, isLocked);
   };
 
-  const handleLockToggle = () => {
-    const newIsLocked = !isLocked;
-    setIsLocked(newIsLocked);
-    triggerSave(content, mood, attachments, newIsLocked);
+  const handleLockToggle = async () => {
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const enrolled = await LocalAuthentication.isEnrolledAsync();
+
+    if (!hasHardware || !enrolled) {
+      Alert.alert(
+        'Biometrics Not Available',
+        'Your device does not support or have biometric authentication set up. Please enable it in your device settings.'
+      );
+      return;
+    }
+
+    const action = isLocked ? 'unlock' : 'lock';
+
+    Alert.alert(
+      isLocked ? 'Unlock Entry' : 'Lock Entry',
+      `Would you like to use biometric authentication to ${action} this entry?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            try {
+              const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: isLocked ? 'Confirm to unlock this entry' : 'Confirm to lock this entry',
+                fallbackLabel: 'Use Passcode',
+              });
+
+              if (result.success) {
+                const newIsLocked = !isLocked;
+                setIsLocked(newIsLocked);
+                triggerSave(content, mood, attachments, newIsLocked);
+              } else {
+                Alert.alert('Authentication Failed', 'We could not verify your identity.');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'An error occurred during authentication.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleManualSave = async () => {

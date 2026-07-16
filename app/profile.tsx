@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Switch,
   PanResponder,
   Platform,
+  Alert,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Colors, Radius, Spacing, Typography } from '../constants/theme';
 import { useAmbientSound } from '../hooks/useAmbientSound';
 import { getAllEntries, JournalEntry } from '../hooks/useJournal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LocalAuthentication from 'expo-local-authentication';
 
 // ── Custom volume slider ─────────────────────────────────────────────────────
 function VolumeSlider({
@@ -114,6 +117,65 @@ export default function ProfileScreen() {
   const { enabled, setEnabled, volume, setVolume } = useAmbientSound();
 
   const [totalEntries, setTotalEntries] = useState(0);
+  const [isAppLockEnabled, setIsAppLockEnabled] = useState(false);
+
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const val = await AsyncStorage.getItem('@garden:app_lock');
+        setIsAppLockEnabled(val === 'true');
+      } catch {
+        setIsAppLockEnabled(false);
+      }
+    }
+    loadSettings();
+  }, []);
+
+  const handleAppLockToggle = async (value: boolean) => {
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const enrolled = await LocalAuthentication.isEnrolledAsync();
+
+    if (!hasHardware || !enrolled) {
+      Alert.alert(
+        'Biometrics Not Available',
+        'Your device does not support or have biometric authentication set up. Please enable it in your device settings.'
+      );
+      return;
+    }
+
+    const action = value ? 'enable' : 'disable';
+
+    Alert.alert(
+      value ? 'Enable App Lock' : 'Disable App Lock',
+      `Are you sure you want to ${action} App Lock using biometric authentication?`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Confirm',
+          onPress: async () => {
+            try {
+              const result = await LocalAuthentication.authenticateAsync({
+                promptMessage: value ? 'Confirm to enable App Lock' : 'Confirm to disable App Lock',
+                fallbackLabel: 'Use Passcode',
+              });
+
+              if (result.success) {
+                await AsyncStorage.setItem('@garden:app_lock', value ? 'true' : 'false');
+                setIsAppLockEnabled(value);
+              } else {
+                Alert.alert('Authentication Failed', 'We could not verify your identity. Please try again.');
+              }
+            } catch (error) {
+              Alert.alert('Error', 'An error occurred during authentication.');
+            }
+          },
+        },
+      ]
+    );
+  };
   const [totalWords, setTotalWords] = useState(0);
   const [currentStreak, setCurrentStreak] = useState(0);
 
@@ -262,6 +324,34 @@ export default function ProfileScreen() {
               </View>
             </View>
           )}
+        </View>
+
+        {/* ── Security section ───────────────────────────────────── */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>Security</Text>
+          <Text style={styles.sectionDesc}>
+            Protect your diary with biometric authentication.
+          </Text>
+
+          {/* Toggle row */}
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingLabel}>App Lock</Text>
+              <Text style={styles.settingSub}>
+                {isAppLockEnabled ? 'Require biometrics on startup' : 'Bypass biometric check'}
+              </Text>
+            </View>
+            <Switch
+              value={isAppLockEnabled}
+              onValueChange={handleAppLockToggle}
+              trackColor={{
+                false: Colors.cardBorder,
+                true: Colors.accent + '60',
+              }}
+              thumbColor={isAppLockEnabled ? Colors.accent : Colors.surface}
+              ios_backgroundColor={Colors.cardBorder}
+            />
+          </View>
         </View>
 
         {/* ── About section ───────────────────────────────────────── */}
