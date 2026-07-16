@@ -11,6 +11,9 @@ import {
   Platform,
   Animated,
   Image,
+  Modal,
+  PanResponder,
+  Dimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -19,6 +22,8 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MoodPicker from '../../components/MoodPicker';
 import FontPicker from '../../components/FontPicker';
+import AudioPlayerAttachment from '../../components/AudioPlayerAttachment';
+import { Audio } from 'expo-av';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
 import { useFontStyle } from '../../hooks/useFontStyle';
 import { useAmbientSound } from '../../hooks/useAmbientSound';
@@ -30,7 +35,15 @@ import {
   friendlyDate,
   JournalEntry,
   Attachment,
+  parseDate,
 } from '../../hooks/useJournal';
+import { 
+  FontAwesome6,
+  MaterialIcons,
+  Feather,
+  Ionicons,
+  Octicons
+ } from '@expo/vector-icons';
 
 export default function EntryScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
@@ -38,6 +51,7 @@ export default function EntryScreen() {
   const { currentFont } = useFontStyle();
   const { enabled: soundEnabled, setEnabled: setSoundEnabled, fadeIn: fadeInAmbient, fadeOut: fadeOutAmbient, isPlaying } = useAmbientSound();
 
+  const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [mood, setMood] = useState(2);
   const [wordCount, setWordCount] = useState(0);
@@ -48,9 +62,37 @@ export default function EntryScreen() {
   const [isTyping, setIsTyping] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
   const [displaySaveStatus, setDisplaySaveStatus] = useState('Save');
+  const [lightboxUri, setLightboxUri] = useState<string | null>(null);
+
+  // Undo/Redo history
+  const [history, setHistory] = useState<{ title: string; content: string }[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Voice recording state
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pulseAnim = useRef(new Animated.Value(0.3)).current;
+
+  // Track per-attachment drag positions
+  const dragPositions = useRef<Record<string, Animated.ValueXY>>({});
+
+  const getDragAnim = (id: string, initialX = 0, initialY = 0) => {
+    if (!dragPositions.current[id]) {
+      dragPositions.current[id] = new Animated.ValueXY({ x: initialX, y: initialY });
+    }
+    return dragPositions.current[id];
+  };
+
+  // Used to disable ScrollView scrolling while an attachment is being dragged.
+  // A ref (not state) avoids triggering re-renders that would kill the gesture mid-drag.
+  const isDragging = useRef(false);
+  const scrollViewRef = useRef<ScrollView>(null);
   
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordHistoryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
   const flipAnim = useRef(new Animated.Value(1)).current;
 
@@ -58,22 +100,58 @@ export default function EntryScreen() {
   useEffect(() => {
     if (!date) return;
     getEntry(date).then((e) => {
+      const loadedTitle = e?.title || '';
+      const loadedContent = e?.content || '';
+
       if (e) {
-        setContent(e.content);
+        setTitle(loadedTitle);
+        setContent(loadedContent);
         setMood(e.mood);
         setWordCount(e.wordCount);
         setAttachments(e.attachments || []);
         setIsLocked(!!e.isLocked);
       }
+
+      // Initialize history with loaded state
+      setHistory([{ title: loadedTitle, content: loadedContent }]);
+      setHistoryIndex(0);
     });
   }, [date]);
 
-  // Clean up sound on unmount
+  // Clean up sound, recording interval, and history timeout on unmount
   useEffect(() => {
     return () => {
       fadeOutAmbient();
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (recordHistoryTimeoutRef.current) {
+        clearTimeout(recordHistoryTimeoutRef.current);
+      }
     };
-  }, []);
+  }, [fadeOutAmbient]);
+
+  // Pulsing animation for recording red dot
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0.3,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(0.3);
+    }
+  }, [isRecording, pulseAnim]);
 
   // Handle automatic fade in / fade out based on typing state
   useEffect(() => {
@@ -87,18 +165,36 @@ export default function EntryScreen() {
     }
   }, [isTyping, soundEnabled, fadeInAmbient, fadeOutAmbient]);
 
+  const titleRef = useRef('');
+  useEffect(() => {
+    titleRef.current = title;
+  }, [title]);
+
+  const getMetadataText = () => {
+    const parsedDate = date ? parseDate(date) : new Date();
+    const datePart = parsedDate.toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    });
+    const time = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true });
+    return `${datePart} at ${time} | ${content.length} ${content.length === 1 ? 'character' : 'characters'}`;
+  };
+
   // Auto-save with debounce
   const triggerSave = useCallback(
     (text: string, currentMood: number, currentAttachments: Attachment[], currentIsLocked: boolean) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
-        if (!text.trim() && currentAttachments.length === 0) {
+        const currentTitle = titleRef.current;
+        if (!text.trim() && !currentTitle.trim() && currentAttachments.length === 0) {
           await deleteEntry(date!);
           return;
         }
         const wc = countWords(text);
         const entry: JournalEntry = {
           date: date!,
+          title: currentTitle,
           content: text,
           mood: currentMood,
           wordCount: wc,
@@ -114,6 +210,71 @@ export default function EntryScreen() {
     [date]
   );
 
+  const historyIndexRef = useRef(-1);
+  useEffect(() => {
+    historyIndexRef.current = historyIndex;
+  }, [historyIndex]);
+
+  const recordState = useCallback((newTitle: string, newContent: string) => {
+    if (recordHistoryTimeoutRef.current) clearTimeout(recordHistoryTimeoutRef.current);
+    
+    recordHistoryTimeoutRef.current = setTimeout(() => {
+      setHistory((prev) => {
+        const currentIndex = historyIndexRef.current;
+        const cleanHistory = prev.slice(0, currentIndex + 1);
+        
+        const lastState = cleanHistory[cleanHistory.length - 1];
+        if (lastState && lastState.title === newTitle && lastState.content === newContent) {
+          return prev;
+        }
+        
+        const nextHistory = [...cleanHistory, { title: newTitle, content: newContent }];
+        setHistoryIndex(nextHistory.length - 1);
+        return nextHistory;
+      });
+    }, 400);
+  }, []);
+
+  const handleUndo = () => {
+    if (historyIndex > 0) {
+      const prevIndex = historyIndex - 1;
+      const state = history[prevIndex];
+      
+      setHistoryIndex(prevIndex);
+      setTitle(state.title);
+      setContent(state.content);
+      setWordCount(countWords(state.content));
+      
+      setSaved(false);
+      titleRef.current = state.title;
+      triggerSave(state.content, mood, attachments, isLocked);
+    }
+  };
+
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1) {
+      const nextIndex = historyIndex + 1;
+      const state = history[nextIndex];
+      
+      setHistoryIndex(nextIndex);
+      setTitle(state.title);
+      setContent(state.content);
+      setWordCount(countWords(state.content));
+      
+      setSaved(false);
+      titleRef.current = state.title;
+      triggerSave(state.content, mood, attachments, isLocked);
+    }
+  };
+
+  const handleTitleChange = (text: string) => {
+    setTitle(text);
+    setSaved(false);
+    titleRef.current = text;
+    triggerSave(content, mood, attachments, isLocked);
+    recordState(text, content);
+  };
+
   const handleContentChange = (text: string) => {
     setContent(text);
     setWordCount(countWords(text));
@@ -127,6 +288,8 @@ export default function EntryScreen() {
         setIsTyping(false);
       }, 4000); // fade out after 4s of inactivity
     }
+
+    recordState(title, text);
   };
 
   const handleMoodChange = (m: number) => {
@@ -146,45 +309,28 @@ export default function EntryScreen() {
       return;
     }
 
-    const action = isLocked ? 'unlock' : 'lock';
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: isLocked ? 'Verify to unlock' : 'Confirm to lock',
+        fallbackLabel: 'Use Passcode',
+      });
 
-    Alert.alert(
-      isLocked ? 'Unlock Entry' : 'Lock Entry',
-      `Would you like to use biometric authentication to ${action} this entry?`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            try {
-              const result = await LocalAuthentication.authenticateAsync({
-                promptMessage: isLocked ? 'Confirm to unlock this entry' : 'Confirm to lock this entry',
-                fallbackLabel: 'Use Passcode',
-              });
-
-              if (result.success) {
-                const newIsLocked = !isLocked;
-                setIsLocked(newIsLocked);
-                triggerSave(content, mood, attachments, newIsLocked);
-              } else {
-                Alert.alert('Authentication Failed', 'We could not verify your identity.');
-              }
-            } catch (error) {
-              Alert.alert('Error', 'An error occurred during authentication.');
-            }
-          },
-        },
-      ]
-    );
+      if (result.success) {
+        const newIsLocked = !isLocked;
+        setIsLocked(newIsLocked);
+        triggerSave(content, mood, attachments, newIsLocked);
+      } else {
+        Alert.alert('Authentication Failed', 'We could not verify your identity.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred during authentication.');
+    }
   };
 
   const handleManualSave = async () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     
-    if (!content.trim() && attachments.length === 0) {
+    if (!content.trim() && !title.trim() && attachments.length === 0) {
       await deleteEntry(date!);
       router.back();
       return;
@@ -192,7 +338,7 @@ export default function EntryScreen() {
 
     setSaving(true);
     const wc = countWords(content);
-    await saveEntry({ date: date!, content, mood, wordCount: wc, updatedAt: new Date().toISOString(), attachments, isLocked });
+    await saveEntry({ date: date!, title, content, mood, wordCount: wc, updatedAt: new Date().toISOString(), attachments, isLocked });
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
@@ -214,6 +360,81 @@ export default function EntryScreen() {
         },
       ]
     );
+  };
+  const formatDuration = (sec: number) => {
+    const mins = Math.floor(sec / 60);
+    const secs = sec % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  const startRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('Permission Denied', 'Please enable microphone access in settings to record voice notes.');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+
+      setRecording(newRecording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } catch (err) {
+      console.error('Failed to start recording', err);
+      Alert.alert('Error', 'Failed to start recording. Please try again.');
+    }
+  };
+
+  const stopRecording = async (save: boolean) => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+
+    if (!recording) {
+      setIsRecording(false);
+      return;
+    }
+
+    try {
+      await recording.stopAndUnloadAsync();
+      const uri = recording.getURI();
+      setRecording(null);
+      setIsRecording(false);
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+
+      if (save && uri) {
+        const newAtt: Attachment = {
+          id: Date.now().toString(),
+          uri: uri,
+          type: 'audio',
+          name: `Voice Note ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        };
+        const newAttachments = [...attachments, newAtt];
+        setAttachments(newAttachments);
+        triggerSave(content, mood, newAttachments, isLocked);
+      }
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+    }
   };
 
   const handleAttach = async () => {
@@ -259,6 +480,7 @@ export default function EntryScreen() {
     inputRange: [0, 1],
     outputRange: ['90deg', '0deg'],
   });
+  const showHistoryButtons = historyIndex > 0 || historyIndex < history.length - 1;
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -270,32 +492,66 @@ export default function EntryScreen() {
         {/* Nav bar */}
         <View style={styles.navbar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.navBtn}>
-            <Text style={styles.navBtnText}>← Back</Text>
+            <Text style={styles.navBtnText}>
+              <Ionicons name='chevron-back' size={25} color={Colors.accent}/>
+            </Text>
           </TouchableOpacity>
 
-          <View style={styles.navCenter}>
-            <Text style={styles.navDate}>{friendlyDate(date ?? '')}</Text>
-          </View>
+          <View style={styles.navbarRightContainer}>
+            {showHistoryButtons && (
+              <>
+                {/* Undo Button */}
+                <TouchableOpacity 
+                  onPress={handleUndo} 
+                  style={styles.navActionBtn} 
+                  disabled={historyIndex <= 0}
+                  activeOpacity={0.7}
+                >
+                  <Octicons 
+                    name="undo" 
+                    size={18} 
+                    color={historyIndex <= 0 ? Colors.textFaint : Colors.accent} 
+                  />
+                </TouchableOpacity>
 
-          <TouchableOpacity 
-            onPress={handleManualSave} 
-            style={styles.navBtnRight} 
-            disabled={saving || displaySaveStatus !== 'Save'}
-          >
-            <Animated.Text 
-              style={[
-                styles.navBtnText, 
-                styles.navSave, 
-                displaySaveStatus === '✓ Saved' && styles.saveStatusSaved,
-                { transform: [{ rotateX: saveTextRotateX }] }
-              ]}
+                {/* Redo Button */}
+                <TouchableOpacity 
+                  onPress={handleRedo} 
+                  style={styles.navActionBtn} 
+                  disabled={historyIndex >= history.length - 1}
+                  activeOpacity={0.7}
+                >
+                  <Octicons 
+                    name="redo" 
+                    size={18} 
+                    color={historyIndex >= history.length - 1 ? Colors.textFaint : Colors.accent} 
+                  />
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Save Button */}
+            <TouchableOpacity 
+              onPress={handleManualSave} 
+              style={styles.navBtnRight} 
+              disabled={saving || displaySaveStatus !== 'Save'}
             >
-              {displaySaveStatus}
-            </Animated.Text>
-          </TouchableOpacity>
+              <Animated.Text 
+                style={[
+                  styles.navBtnText, 
+                  styles.navSave, 
+                  displaySaveStatus === 'Saved' && styles.saveStatusSaved,
+                  { transform: [{ rotateX: saveTextRotateX }] }
+                ]}
+              >
+                {displaySaveStatus}
+              </Animated.Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView
+          ref={scrollViewRef}
           style={styles.scroll}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
@@ -306,6 +562,19 @@ export default function EntryScreen() {
 
           {/* Divider */}
           <View style={styles.divider} />
+
+          {/* Title Input */}
+          <TextInput
+            style={[styles.titleInput, { fontFamily: currentFont.bodyFont }]}
+            placeholder="Title"
+            placeholderTextColor={Colors.textFaint}
+            value={title}
+            onChangeText={handleTitleChange}
+            selectionColor={Colors.accent}
+          />
+
+          {/* Metadata Text */}
+          <Text style={styles.metadataText}>{getMetadataText()}</Text>
 
           {/* Text input — uses selected font */}
           <TextInput
@@ -320,42 +589,137 @@ export default function EntryScreen() {
             selectionColor={Colors.accent}
           />
 
-          {/* Attachments Section */}
+          {/* Attachments Section — draggable */}
           {attachments.length > 0 && (
             <View style={styles.attachmentsContainer}>
-              {attachments.map((att) => (
-                <View key={att.id} style={styles.attachmentItem}>
-                  {att.type === 'image' ? (
-                    <Image source={{ uri: att.uri }} style={styles.attachmentImage} />
-                  ) : (
-                    <View style={styles.attachmentDoc}>
-                      <Text style={styles.attachmentDocIcon}>📄</Text>
-                      <Text style={styles.attachmentDocName} numberOfLines={1}>{att.name}</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity 
-                    style={styles.removeAttachmentBtn} 
-                    onPress={() => {
-                      const newAttachments = attachments.filter(a => a.id !== att.id);
-                      setAttachments(newAttachments);
-                      triggerSave(content, mood, newAttachments, isLocked);
-                    }}
+              {attachments.map((att) => {
+                const anim = getDragAnim(att.id, att.x || 0, att.y || 0);
+                const panResponder = PanResponder.create({
+                  // Capture the touch immediately so iOS ScrollView doesn't steal it.
+                  onStartShouldSetPanResponder: () => false,
+                  onStartShouldSetPanResponderCapture: () => false,
+                  onMoveShouldSetPanResponder: (_, gs) =>
+                    Math.abs(gs.dx) > 6 || Math.abs(gs.dy) > 6,
+                  onMoveShouldSetPanResponderCapture: (_, gs) =>
+                    Math.abs(gs.dx) > 6 || Math.abs(gs.dy) > 6,
+                  onPanResponderGrant: () => {
+                    // Disable scroll natively so ScrollView releases the gesture to us without re-rendering.
+                    isDragging.current = true;
+                    scrollViewRef.current?.setNativeProps({ scrollEnabled: false });
+                    anim.setOffset({
+                      x: (anim.x as any)._value,
+                      y: (anim.y as any)._value,
+                    });
+                    anim.setValue({ x: 0, y: 0 });
+                  },
+                  onPanResponderMove: Animated.event(
+                    [null, { dx: anim.x, dy: anim.y }],
+                    { useNativeDriver: false }
+                  ),
+                  onPanResponderRelease: () => {
+                    anim.flattenOffset();
+                    isDragging.current = false;
+                    scrollViewRef.current?.setNativeProps({ scrollEnabled: true });
+                    
+                    const finalX = (anim.x as any)._value;
+                    const finalY = (anim.y as any)._value;
+                    const updatedAttachments = attachments.map((a) => {
+                      if (a.id === att.id) {
+                        return { ...a, x: finalX, y: finalY };
+                      }
+                      return a;
+                    });
+                    setAttachments(updatedAttachments);
+                    triggerSave(content, mood, updatedAttachments, isLocked);
+                  },
+                  onPanResponderTerminate: () => {
+                    anim.flattenOffset();
+                    isDragging.current = false;
+                    scrollViewRef.current?.setNativeProps({ scrollEnabled: true });
+                    
+                    const finalX = (anim.x as any)._value;
+                    const finalY = (anim.y as any)._value;
+                    const updatedAttachments = attachments.map((a) => {
+                      if (a.id === att.id) {
+                        return { ...a, x: finalX, y: finalY };
+                      }
+                      return a;
+                    });
+                    setAttachments(updatedAttachments);
+                    triggerSave(content, mood, updatedAttachments, isLocked);
+                  },
+                });
+
+                return (
+                  <Animated.View
+                    key={att.id}
+                    style={[
+                      styles.attachmentItem,
+                      { transform: anim.getTranslateTransform() },
+                    ]}
+                    {...panResponder.panHandlers}
                   >
-                    <Text style={styles.removeAttachmentText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
+                    {att.type === 'image' ? (
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => setLightboxUri(att.uri)}
+                      >
+                        <Image source={{ uri: att.uri }} style={styles.attachmentImage} />
+                      </TouchableOpacity>
+                    ) : att.type === 'audio' ? (
+                      <AudioPlayerAttachment uri={att.uri} name={att.name} />
+                    ) : (
+                      <View style={styles.attachmentDoc}>
+                        <Text style={styles.attachmentDocIcon}>📄</Text>
+                        <Text style={styles.attachmentDocName} numberOfLines={1}>{att.name}</Text>
+                      </View>
+                    )}
+                    <TouchableOpacity
+                      style={styles.removeAttachmentBtn}
+                      onPress={() => {
+                        const newAttachments = attachments.filter(a => a.id !== att.id);
+                        delete dragPositions.current[att.id];
+                        setAttachments(newAttachments);
+                        triggerSave(content, mood, newAttachments, isLocked);
+                      }}
+                    >
+                      <Text style={styles.removeAttachmentText}>✕</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                );
+              })}
             </View>
           )}
         </ScrollView>
 
-        {/* Bottom bar */}
-        <View style={[styles.bottomBar, { paddingBottom: 24 }]}>
-          {/* Word count */}
-          <Text style={styles.wordCountText}>
-            {wordCount} {wordCount === 1 ? 'word' : 'words'}
-          </Text>
+        {/* Recording Overlay Bar */}
+        {isRecording && (
+          <View style={styles.recordingBar}>
+            <View style={styles.recordingLeft}>
+              <Animated.View style={[styles.recordingDot, { opacity: pulseAnim }]} />
+              <Text style={styles.recordingText}>
+                Recording… {formatDuration(recordingDuration)}
+              </Text>
+            </View>
+            <View style={styles.recordingRight}>
+              <TouchableOpacity
+                style={styles.recordingCancelBtn}
+                onPress={() => stopRecording(false)}
+              >
+                <Text style={styles.recordingCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.recordingDoneBtn}
+                onPress={() => stopRecording(true)}
+              >
+                <Text style={styles.recordingDoneText}>Done</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
+        {/* Bottom bar */}
+        <View style={[styles.bottomBar, { paddingBottom: 15 }]}>
           {/* Ambient sound toggle */}
           <TouchableOpacity
             style={[
@@ -366,7 +730,10 @@ export default function EntryScreen() {
             activeOpacity={0.75}
           >
             <Text style={styles.soundBtnIcon}>
-              {soundEnabled ? '🔊' : '🔇'}
+              {soundEnabled ? 
+              <Feather name='volume-2' size={16}/>
+              :
+              < Feather name='volume-x' size={16}/>}
             </Text>
           </TouchableOpacity>
 
@@ -380,7 +747,29 @@ export default function EntryScreen() {
             activeOpacity={0.75}
           >
             <Text style={styles.soundBtnIcon}>
-              {isLocked ? '🔒' : '🔓'}
+              {isLocked ? 
+                <Feather name='lock' size={15} /> 
+              : 
+                <Feather name='unlock' size={15} />
+              }
+            </Text>
+          </TouchableOpacity>
+
+          {/* Voice Note Button */}
+          <TouchableOpacity
+            style={[
+              styles.soundBtn,
+              isRecording && styles.soundBtnActive,
+            ]}
+            onPress={isRecording ? () => stopRecording(true) : startRecording}
+            activeOpacity={0.75}
+          >
+            <Text style={styles.soundBtnIcon}>
+              {isRecording ? 
+                <Feather name='mic-off' size={15} /> 
+              : 
+                <Feather name='mic' size={15} />
+              }
             </Text>
           </TouchableOpacity>
 
@@ -390,7 +779,9 @@ export default function EntryScreen() {
             onPress={handleAttach}
             activeOpacity={0.75}
           >
-            <Text style={styles.attachBtnIcon}>📎</Text>
+            <Text style={styles.attachBtnIcon}>
+              <FontAwesome6 name='image' size={15}/>
+            </Text>
           </TouchableOpacity>
 
           {/* Font picker button */}
@@ -400,13 +791,14 @@ export default function EntryScreen() {
             activeOpacity={0.75}
           >
             <Text style={[styles.fontBtnLabel, { fontFamily: currentFont.bodyFont }]}>Aa</Text>
-            <Text style={styles.fontBtnName}>{currentFont.label}</Text>
           </TouchableOpacity>
 
           {/* Delete */}
           {content.trim() && (
             <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
-              <Text style={styles.deleteBtnText}>🗑</Text>
+              <Text style={styles.deleteBtnText}>
+                <MaterialIcons name="delete-outline" size={16}/>
+              </Text>
             </TouchableOpacity>
           )}
         </View>
@@ -417,6 +809,37 @@ export default function EntryScreen() {
         visible={showFontPicker}
         onClose={() => setShowFontPicker(false)}
       />
+
+      {/* Lightbox modal */}
+      <Modal
+        visible={lightboxUri !== null}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setLightboxUri(null)}
+      >
+        <TouchableOpacity
+          style={styles.lightboxOverlay}
+          activeOpacity={1}
+          onPress={() => setLightboxUri(null)}
+        >
+          <View style={styles.lightboxContainer}>
+            {lightboxUri && (
+              <Image
+                source={{ uri: lightboxUri }}
+                style={styles.lightboxImage}
+                resizeMode="contain"
+              />
+            )}
+            <TouchableOpacity
+              style={styles.lightboxClose}
+              onPress={() => setLightboxUri(null)}
+            >
+              <Text style={styles.lightboxCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -444,8 +867,14 @@ const styles = StyleSheet.create({
   navBtnRight: {
     paddingVertical: 8,
     paddingHorizontal: 4,
-    width: 80,
-    alignItems: 'flex-end',
+  },
+  navbarRightContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  navActionBtn: {
+    padding: 6,
   },
   navBtnText: {
     fontFamily: Typography.bodyMedium,
@@ -498,6 +927,7 @@ const styles = StyleSheet.create({
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     borderTopWidth: 1,
@@ -530,8 +960,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
     borderRadius: Radius.full,
     backgroundColor: Colors.accentSoft,
     borderWidth: 1,
@@ -570,9 +1000,9 @@ const styles = StyleSheet.create({
   },
   attachmentsContainer: {
     marginTop: Spacing.md,
-    gap: Spacing.sm,
     flexDirection: 'row',
     flexWrap: 'wrap',
+    minHeight: 130,
   },
   attachmentItem: {
     position: 'relative',
@@ -580,16 +1010,16 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   attachmentImage: {
-    width: 100,
-    height: 100,
+    width: 110,
+    height: 110,
     borderRadius: Radius.md,
     backgroundColor: Colors.surface,
     borderWidth: 1,
     borderColor: Colors.cardBorder,
   },
   attachmentDoc: {
-    width: 100,
-    height: 100,
+    width: 110,
+    height: 110,
     borderRadius: Radius.md,
     backgroundColor: Colors.surface,
     borderWidth: 1,
@@ -620,10 +1050,112 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: Colors.bg,
+    zIndex: 10,
   },
   removeAttachmentText: {
     color: '#FFF',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+  // Lightbox
+  lightboxOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lightboxContainer: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lightboxImage: {
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height * 0.8,
+    borderRadius: 0,
+  },
+  lightboxClose: {
+    position: 'absolute',
+    top: 56,
+    right: 20,
+    backgroundColor: Colors.danger,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+  },
+  lightboxCloseText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  recordingBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.accentSoft,
+    borderTopWidth: 1,
+    borderTopColor: Colors.accentDim + '30',
+  },
+  recordingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recordingDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.danger,
+  },
+  recordingText: {
+    fontFamily: Typography.bodyMedium,
+    fontSize: 14,
+    color: Colors.text,
+  },
+  recordingRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
+  recordingCancelBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  recordingCancelText: {
+    fontFamily: Typography.bodyMedium,
+    fontSize: 14,
+    color: Colors.textMuted,
+  },
+  recordingDoneBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.accent,
+  },
+  recordingDoneText: {
+    fontFamily: Typography.bodySemibold,
+    fontSize: 14,
+    color: '#FFF',
+  },
+  titleInput: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    color: Colors.text,
+    marginBottom: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 0,
+  },
+  metadataText: {
+    fontFamily: Typography.body,
+    fontSize: 12,
+    color: Colors.textMuted,
+    marginBottom: 16,
   },
 });
