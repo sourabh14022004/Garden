@@ -19,7 +19,6 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MoodPicker from '../../components/MoodPicker';
@@ -27,7 +26,7 @@ import FontPicker from '../../components/FontPicker';
 import ParagraphStyleModal from '../../components/ParagraphStyleModal';
 import AudioPlayerAttachment from '../../components/AudioPlayerAttachment';
 import { Audio } from 'expo-av';
-import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
+import { Colors, Radius, Spacing, Typography } from '../../constants/theme';
 import { useFontStyle } from '../../hooks/useFontStyle';
 import { useAmbientSound } from '../../hooks/useAmbientSound';
 import {
@@ -35,7 +34,6 @@ import {
   saveEntry,
   deleteEntry,
   countWords,
-  friendlyDate,
   JournalEntry,
   Attachment,
   parseDate,
@@ -308,7 +306,7 @@ export default function EntryScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
   const router = useRouter();
   const { currentFont } = useFontStyle();
-  const { enabled: soundEnabled, setEnabled: setSoundEnabled, fadeIn: fadeInAmbient, fadeOut: fadeOutAmbient, isPlaying } = useAmbientSound();
+  const { enabled: soundEnabled, setEnabled: setSoundEnabled, fadeIn: fadeInAmbient, fadeOut: fadeOutAmbient } = useAmbientSound();
 
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
