@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, MOODS, Radius, Spacing, Typography } from '../constants/theme';
-import { JournalEntry, friendlyDate } from '../hooks/useJournal';
+import { JournalEntry, friendlyDate, getEntryDisplay } from '../hooks/useJournal';
 import { getPlantForDate } from '../hooks/usePlants';
 import { useFontStyle } from '../hooks/useFontStyle';
 
@@ -16,8 +16,9 @@ interface Props {
 export default function EntryCard({ entry, onDelete }: Props) {
   const router = useRouter();
   const mood = MOODS[entry.mood];
-  const preview = entry.content.trim().slice(0, 130);
-  const isLong = entry.content.trim().length > 130;
+  const { title: displayTitle, preview: displayPreview } = getEntryDisplay(entry);
+  const preview = displayPreview.slice(0, 130);
+  const isLong = displayPreview.length > 130;
   const plant = getPlantForDate(entry.date);
   const { currentFont } = useFontStyle();
 
@@ -32,7 +33,7 @@ export default function EntryCard({ entry, onDelete }: Props) {
       
       if (hasHardware && isEnrolled) {
         const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: 'Unlock Entry',
+          promptMessage: `"Garden" is encrypted`,
           fallbackLabel: 'Use Passcode',
         });
         if (!result.success) {
@@ -53,16 +54,28 @@ export default function EntryCard({ entry, onDelete }: Props) {
       <View style={styles.header}>
         <View style={styles.headerTextStack}>
           <Text style={styles.relativeDate}>{friendlyDate(entry.date)}</Text>
-          <Text style={[styles.moodLabel, { color: mood.color }]} numberOfLines={2}>
-            {mood.label}
-          </Text>
+          {!entry.isLocked ? (
+            <Text style={[styles.moodLabel, { color: mood.color }]} numberOfLines={2}>
+              {mood.label}
+            </Text>
+          ) : (
+            <Text style={[styles.moodLabel, { color: Colors.textMuted }]} numberOfLines={2}>
+              Locked
+            </Text>
+          )}
           <Text style={styles.absoluteDate}>{absoluteDate}</Text>
         </View>
 
         <View style={styles.headerIcons}>
-          <View style={[styles.moodBadge, { backgroundColor: mood.color + '20', borderColor: mood.color + '50' }]}>
-            <Text style={styles.moodEmoji}>{mood.emoji}</Text>
-          </View>
+          {!entry.isLocked ? (
+            <View style={[styles.moodBadge, { backgroundColor: mood.color + '20', borderColor: mood.color + '50' }]}>
+              <Text style={styles.moodEmoji}>{mood.emoji}</Text>
+            </View>
+          ) : (
+            <View style={[styles.moodBadge, { backgroundColor: Colors.accentSoft, borderColor: Colors.accentDim }]}>
+              <Ionicons name="lock-closed" size={14} color={Colors.accent} />
+            </View>
+          )}
           <Image source={plant} style={styles.plantThumb} />
         </View>
       </View>
@@ -71,7 +84,12 @@ export default function EntryCard({ entry, onDelete }: Props) {
       <View style={styles.divider} />
 
       {/* Content preview — in the user's chosen writing font */}
-      <Text style={[styles.preview, { fontFamily: currentFont.bodyFont }]}>
+      {displayTitle ? (
+        <Text style={[styles.cardTitle, { fontFamily: currentFont.bodyFont }]}>
+          {displayTitle}
+        </Text>
+      ) : null}
+      <Text style={[styles.preview, { fontFamily: currentFont.bodyFont }]} numberOfLines={2}>
         {entry.isLocked ? 'This entry is locked.' : `${preview}${isLong ? '…' : ''}`}
       </Text>
 
@@ -153,6 +171,12 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: Colors.cardBorder,
     marginBottom: Spacing.sm,
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontFamily: Typography.bodySemibold,
+    color: Colors.text,
+    marginBottom: 4,
   },
   preview: {
     fontFamily: Typography.body,

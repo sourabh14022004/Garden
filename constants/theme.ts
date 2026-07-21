@@ -29,6 +29,10 @@ export const Colors = {
   mood4: '#9B6FD4',   // 🌟 amazing — lavender
 
   danger: '#C46A5A',
+
+  // Icons color
+  lock: '#53411cff'
+
 };
 
 export const Typography = {

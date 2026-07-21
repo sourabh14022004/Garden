@@ -14,6 +14,8 @@ import {
   Modal,
   PanResponder,
   Dimensions,
+  Keyboard,
+  Share,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
@@ -22,6 +24,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MoodPicker from '../../components/MoodPicker';
 import FontPicker from '../../components/FontPicker';
+import ParagraphStyleModal from '../../components/ParagraphStyleModal';
 import AudioPlayerAttachment from '../../components/AudioPlayerAttachment';
 import { Audio } from 'expo-av';
 import { Colors, Radius, Shadows, Spacing, Typography } from '../../constants/theme';
@@ -45,6 +48,262 @@ import {
   Octicons
  } from '@expo/vector-icons';
 
+export interface AlignmentGroup {
+  id: string;
+  align: 'left' | 'center' | 'right' | 'justify';
+  text: string;
+}
+
+export function parseContentToAlignmentGroups(rawContent: string): AlignmentGroup[] {
+  if (!rawContent) {
+    return [{ id: 'group-0', align: 'left', text: '' }];
+  }
+
+  const groups: AlignmentGroup[] = [];
+  const tagRegex = /<(center|right|justify|left)>([\s\S]*?)<\/\1>/gi;
+
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  const addUntagged = (text: string) => {
+    if (text) {
+      if (groups.length > 0 && groups[groups.length - 1].align === 'left') {
+        groups[groups.length - 1].text += text;
+      } else {
+        groups.push({
+          id: `group-${groups.length}-${Date.now()}-${Math.random()}`,
+          align: 'left',
+          text: text,
+        });
+      }
+    }
+  };
+
+  while ((match = tagRegex.exec(rawContent)) !== null) {
+    const beforeText = rawContent.substring(lastIndex, match.index);
+    addUntagged(beforeText);
+
+    const alignType = match[1].toLowerCase() as 'center' | 'right' | 'justify' | 'left';
+    const groupText = match[2];
+
+    groups.push({
+      id: `group-${groups.length}-${Date.now()}-${Math.random()}`,
+      align: alignType,
+      text: groupText,
+    });
+
+    lastIndex = tagRegex.lastIndex;
+  }
+
+  const remainingText = rawContent.substring(lastIndex);
+  addUntagged(remainingText);
+
+  if (groups.length === 0) {
+    groups.push({ id: 'group-0', align: 'left', text: '' });
+  }
+
+  return groups;
+}
+
+export function serializeAlignmentGroups(groups: AlignmentGroup[]): string {
+  return groups
+    .map((g) => {
+      if (!g.text) return '';
+      if (g.align === 'left') {
+        return g.text;
+      }
+      return `<${g.align}>${g.text}</${g.align}>`;
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+export function applyAlignmentToGroup(
+  groups: AlignmentGroup[],
+  activeGroupId: string,
+  selectionInGroup: { start: number; end: number },
+  newAlign: 'left' | 'center' | 'right' | 'justify'
+): { 
+  updatedGroups: AlignmentGroup[]; 
+  newActiveId: string; 
+  relativeStart: number; 
+  relativeEnd: number;
+} {
+  const groupIndex = groups.findIndex((g) => g.id === activeGroupId);
+  if (groupIndex === -1) {
+    return { 
+      updatedGroups: groups, 
+      newActiveId: activeGroupId, 
+      relativeStart: selectionInGroup.start, 
+      relativeEnd: selectionInGroup.end 
+    };
+  }
+
+  const currentGroup = groups[groupIndex];
+  if (currentGroup.align === newAlign) {
+    return { 
+      updatedGroups: groups, 
+      newActiveId: activeGroupId, 
+      relativeStart: selectionInGroup.start, 
+      relativeEnd: selectionInGroup.end 
+    };
+  }
+
+  const text = currentGroup.text;
+  const selStart = Math.min(selectionInGroup.start, selectionInGroup.end);
+  const selEnd = Math.max(selectionInGroup.start, selectionInGroup.end);
+
+  const textBeforeSel = text.substring(0, selStart);
+  const startLineIdx = (textBeforeSel.match(/\n/g) || []).length;
+
+  const textBeforeEnd = text.substring(0, selEnd);
+  const endLineIdx = (textBeforeEnd.match(/\n/g) || []).length;
+
+  const lines = text.split('\n');
+
+  const beforeLines = lines.slice(0, startLineIdx);
+  const selectedLines = lines.slice(startLineIdx, endLineIdx + 1);
+  const afterLines = lines.slice(endLineIdx + 1);
+
+  const newGroupList: AlignmentGroup[] = [];
+  const now = Date.now();
+
+  const beforeText = beforeLines.join('\n');
+  const beforeLength = beforeText ? beforeText.length + 1 : 0; // +1 for the newline separating beforeLines from selectedLines
+
+  const relativeStart = Math.max(0, selectionInGroup.start - beforeLength);
+  const relativeEnd = Math.max(0, selectionInGroup.end - beforeLength);
+
+  if (beforeLines.length > 0) {
+    newGroupList.push({
+      id: `group-${now}-1`,
+      align: currentGroup.align,
+      text: beforeText,
+    });
+  }
+
+  const newActiveId = `group-${now}-2`;
+  newGroupList.push({
+    id: newActiveId,
+    align: newAlign,
+    text: selectedLines.join('\n'),
+  });
+
+  if (afterLines.length > 0) {
+    newGroupList.push({
+      id: `group-${now}-3`,
+      align: currentGroup.align,
+      text: afterLines.join('\n'),
+    });
+  }
+
+  const finalGroups = [
+    ...groups.slice(0, groupIndex),
+    ...newGroupList,
+    ...groups.slice(groupIndex + 1),
+  ];
+
+  const mergedGroups: AlignmentGroup[] = [];
+  let mergedActiveId = newActiveId;
+  let mergedOffset = 0;
+
+  finalGroups.forEach((g) => {
+    if (mergedGroups.length > 0 && mergedGroups[mergedGroups.length - 1].align === g.align) {
+      const prev = mergedGroups[mergedGroups.length - 1];
+      if (g.id === newActiveId) {
+        mergedActiveId = prev.id;
+        mergedOffset = prev.text.length + 1; // +1 for newline
+      }
+      prev.text = prev.text ? `${prev.text}\n${g.text}` : g.text;
+    } else {
+      mergedGroups.push({ ...g });
+    }
+  });
+
+  return { 
+    updatedGroups: mergedGroups, 
+    newActiveId: mergedActiveId, 
+    relativeStart: relativeStart + mergedOffset, 
+    relativeEnd: relativeEnd + mergedOffset 
+  };
+}
+
+interface ParagraphInputProps {
+  groupId: string;
+  align: 'left' | 'center' | 'right' | 'justify';
+  text: string;
+  isActive: boolean;
+  currentFont: any;
+  indent: number;
+  lineHeight: number;
+  isOnly: boolean;
+  onFocus: (id: string, align: 'left' | 'center' | 'right' | 'justify') => void;
+  onChangeText: (id: string, text: string) => void;
+  onSelectionChange: (id: string, sel: { start: number; end: number }) => void;
+  onKeyPress: (id: string, key: string) => void;
+  inputRef?: (ref: TextInput | null) => void;
+}
+
+const ParagraphInput = React.memo(({
+  groupId,
+  align,
+  text,
+  isActive,
+  currentFont,
+  indent,
+  lineHeight,
+  isOnly,
+  onFocus,
+  onChangeText,
+  onSelectionChange,
+  onKeyPress,
+  inputRef,
+}: ParagraphInputProps) => {
+  const handleFocus = () => {
+    onFocus(groupId, align);
+  };
+
+  const handleChangeText = (newText: string) => {
+    onChangeText(groupId, newText);
+  };
+
+  const handleSelectionChange = (e: any) => {
+    if (isActive) {
+      onSelectionChange(groupId, e.nativeEvent.selection);
+    }
+  };
+
+  const handleKeyPress = (e: any) => {
+    onKeyPress(groupId, e.nativeEvent.key);
+  };
+
+  return (
+    <TextInput
+      ref={inputRef}
+      style={[
+        styles.input,
+        {
+          fontFamily: currentFont.bodyFont,
+          textAlign: align,
+          paddingLeft: indent * 20,
+          lineHeight: lineHeight,
+          minHeight: isOnly ? 320 : undefined,
+        },
+      ]}
+      multiline
+      placeholder={isOnly ? "What's growing in your mind today…" : undefined}
+      placeholderTextColor={Colors.textFaint}
+      value={text}
+      onFocus={handleFocus}
+      onChangeText={handleChangeText}
+      onSelectionChange={handleSelectionChange}
+      onKeyPress={handleKeyPress}
+      textAlignVertical="top"
+      selectionColor={Colors.accent}
+    />
+  );
+});
+
 export default function EntryScreen() {
   const { date } = useLocalSearchParams<{ date: string }>();
   const router = useRouter();
@@ -61,12 +320,53 @@ export default function EntryScreen() {
   const [showFontPicker, setShowFontPicker] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
-  const [displaySaveStatus, setDisplaySaveStatus] = useState('Save');
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [folder, setFolder] = useState<string | undefined>(undefined);
+  const [isEditing, setIsEditing] = useState(true);
   const [lightboxUri, setLightboxUri] = useState<string | null>(null);
+
+  const isBookmarkedRef = useRef(false);
+  const folderRef = useRef<string | undefined>(undefined);
+  const moodRef = useRef(2);
+  const attachmentsRef = useRef<Attachment[]>([]);
+  const isLockedRef = useRef(false);
+  const contentRef = useRef('');
+
+  useEffect(() => { isBookmarkedRef.current = isBookmarked; }, [isBookmarked]);
+  useEffect(() => { folderRef.current = folder; }, [folder]);
+  useEffect(() => { moodRef.current = mood; }, [mood]);
+  useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
+  useEffect(() => { isLockedRef.current = isLocked; }, [isLocked]);
+  useEffect(() => { contentRef.current = content; }, [content]);
+
+  // Keyboard listener to activate edit mode on typing
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setIsEditing(true);
+      }
+    );
+    return () => showSub.remove();
+  }, []);
 
   // Undo/Redo history
   const [history, setHistory] = useState<{ title: string; content: string }[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // Paragraph & Text styles
+  const [showParagraphStyleModal, setShowParagraphStyleModal] = useState(false);
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right' | 'justify'>('left');
+  const [indent, setIndent] = useState(0);
+  const [lineHeight, setLineHeight] = useState(30);
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+
+  // Alignment groups state for per-paragraph alignment
+  const [groups, setGroups] = useState<AlignmentGroup[]>([
+    { id: 'group-0', align: 'left', text: '' },
+  ]);
+  const [activeGroupId, setActiveGroupId] = useState<string>('group-0');
+  const inputRefs = useRef<Record<string, TextInput | null>>({});
 
   // Voice recording state
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
@@ -86,7 +386,6 @@ export default function EntryScreen() {
   };
 
   // Used to disable ScrollView scrolling while an attachment is being dragged.
-  // A ref (not state) avoids triggering re-renders that would kill the gesture mid-drag.
   const isDragging = useRef(false);
   const scrollViewRef = useRef<ScrollView>(null);
   
@@ -94,7 +393,23 @@ export default function EntryScreen() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordHistoryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
-  const flipAnim = useRef(new Animated.Value(1)).current;
+  const lastChangeTimeRef = useRef(0);
+
+  const textAlignRef = useRef<'left' | 'center' | 'right' | 'justify'>('left');
+  const indentRef = useRef(0);
+  const lineHeightRef = useRef(30);
+
+  useEffect(() => {
+    textAlignRef.current = textAlign;
+  }, [textAlign]);
+
+  useEffect(() => {
+    indentRef.current = indent;
+  }, [indent]);
+
+  useEffect(() => {
+    lineHeightRef.current = lineHeight;
+  }, [lineHeight]);
 
   // Load existing entry
   useEffect(() => {
@@ -106,10 +421,32 @@ export default function EntryScreen() {
       if (e) {
         setTitle(loadedTitle);
         setContent(loadedContent);
+
+        const parsedGroups = parseContentToAlignmentGroups(loadedContent);
+        setGroups(parsedGroups);
+        if (parsedGroups.length > 0) {
+          setActiveGroupId(parsedGroups[0].id);
+          setTextAlign(parsedGroups[0].align);
+        }
+
         setMood(e.mood);
         setWordCount(e.wordCount);
         setAttachments(e.attachments || []);
         setIsLocked(!!e.isLocked);
+        setIsBookmarked(!!e.isBookmarked);
+        setFolder(e.folder);
+        setTextAlign(e.textAlign || 'left');
+        setIndent(e.indent || 0);
+        setLineHeight(e.lineHeight || 30);
+
+        if (loadedTitle.trim() || loadedContent.trim() || (e.attachments && e.attachments.length > 0)) {
+          setIsEditing(false);
+        } else {
+          setIsEditing(true);
+        }
+      } else {
+        setGroups([{ id: 'group-0', align: 'left', text: '' }]);
+        setIsEditing(true);
       }
 
       // Initialize history with loaded state
@@ -183,24 +520,58 @@ export default function EntryScreen() {
 
   // Auto-save with debounce
   const triggerSave = useCallback(
-    (text: string, currentMood: number, currentAttachments: Attachment[], currentIsLocked: boolean) => {
+    (
+      text?: string,
+      moodOrOverrides?: number | Partial<JournalEntry>,
+      attachmentsParam?: Attachment[],
+      isLockedParam?: boolean
+    ) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(async () => {
+        const textToSave = text !== undefined ? text : contentRef.current;
         const currentTitle = titleRef.current;
-        if (!text.trim() && !currentTitle.trim() && currentAttachments.length === 0) {
+        
+        let currentMood = moodRef.current;
+        let currentAttachments = attachmentsRef.current;
+        let currentIsLocked = isLockedRef.current;
+        let currentIsBookmarked = isBookmarkedRef.current;
+        let currentFolder = folderRef.current;
+
+        if (typeof moodOrOverrides === 'object' && moodOrOverrides !== null) {
+          if (moodOrOverrides.mood !== undefined) currentMood = moodOrOverrides.mood;
+          if (moodOrOverrides.attachments !== undefined) currentAttachments = moodOrOverrides.attachments;
+          if (moodOrOverrides.isLocked !== undefined) currentIsLocked = moodOrOverrides.isLocked;
+          if (moodOrOverrides.isBookmarked !== undefined) currentIsBookmarked = moodOrOverrides.isBookmarked;
+          if (moodOrOverrides.folder !== undefined) currentFolder = moodOrOverrides.folder;
+        } else if (typeof moodOrOverrides === 'number') {
+          currentMood = moodOrOverrides;
+          if (attachmentsParam !== undefined) currentAttachments = attachmentsParam;
+          if (isLockedParam !== undefined) currentIsLocked = isLockedParam;
+        }
+
+        const currentTextAlign = textAlignRef.current;
+        const currentIndent = indentRef.current;
+        const currentLineHeight = lineHeightRef.current;
+
+        if (!textToSave.trim() && !currentTitle.trim() && currentAttachments.length === 0) {
           await deleteEntry(date!);
           return;
         }
-        const wc = countWords(text);
+        const wc = countWords(textToSave);
         const entry: JournalEntry = {
           date: date!,
           title: currentTitle,
-          content: text,
+          content: textToSave,
           mood: currentMood,
           wordCount: wc,
           updatedAt: new Date().toISOString(),
           attachments: currentAttachments,
           isLocked: currentIsLocked,
+          isBookmarked: currentIsBookmarked,
+          folder: currentFolder,
+          textAlign: currentTextAlign,
+          indent: currentIndent,
+          lineHeight: currentLineHeight,
         };
         await saveEntry(entry);
         setSaved(true);
@@ -243,6 +614,7 @@ export default function EntryScreen() {
       setHistoryIndex(prevIndex);
       setTitle(state.title);
       setContent(state.content);
+      setGroups(parseContentToAlignmentGroups(state.content));
       setWordCount(countWords(state.content));
       
       setSaved(false);
@@ -259,6 +631,7 @@ export default function EntryScreen() {
       setHistoryIndex(nextIndex);
       setTitle(state.title);
       setContent(state.content);
+      setGroups(parseContentToAlignmentGroups(state.content));
       setWordCount(countWords(state.content));
       
       setSaved(false);
@@ -266,6 +639,103 @@ export default function EntryScreen() {
       triggerSave(state.content, mood, attachments, isLocked);
     }
   };
+
+  const handleGroupTextChange = useCallback((groupId: string, newText: string) => {
+    setGroups((prevGroups) => {
+      const updated = prevGroups.map((g) => (g.id === groupId ? { ...g, text: newText } : g));
+      const serialized = serializeAlignmentGroups(updated);
+      setContent(serialized);
+      setWordCount(countWords(serialized));
+      setSaved(false);
+      triggerSave(serialized, mood, attachments, isLocked);
+      recordState(titleRef.current, serialized);
+      return updated;
+    });
+
+    if (soundEnabled) {
+      setIsTyping(true);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        setIsTyping(false);
+      }, 4000);
+    }
+  }, [mood, attachments, isLocked, soundEnabled]);
+
+  const handleAlignmentChange = (newAlign: 'left' | 'center' | 'right' | 'justify') => {
+    const { updatedGroups, newActiveId, relativeStart, relativeEnd } = applyAlignmentToGroup(
+      groups,
+      activeGroupId,
+      selection,
+      newAlign
+    );
+    setGroups(updatedGroups);
+    setActiveGroupId(newActiveId);
+    setTextAlign(newAlign);
+
+    setTimeout(() => {
+      inputRefs.current[newActiveId]?.focus();
+      setSelection({ start: relativeStart, end: relativeEnd });
+    }, 50);
+
+    const serialized = serializeAlignmentGroups(updatedGroups);
+    setContent(serialized);
+    setWordCount(countWords(serialized));
+    setSaved(false);
+    triggerSave(serialized, mood, attachments, isLocked);
+  };
+
+  const handleFocus = useCallback((groupId: string, align: 'left' | 'center' | 'right' | 'justify') => {
+    setActiveGroupId(groupId);
+    setTextAlign(align);
+    setIsEditing(true);
+  }, []);
+
+  const handleSelectionChange = useCallback((groupId: string, sel: { start: number; end: number }) => {
+    setSelection(sel);
+  }, []);
+
+  const handleKeyPress = useCallback((groupId: string, key: string) => {
+    if (key === 'Backspace') {
+      setGroups((prevGroups) => {
+        const groupIndex = prevGroups.findIndex((g) => g.id === groupId);
+        if (groupIndex > 0 && selection.start === 0 && selection.end === 0) {
+          const currentGroup = prevGroups[groupIndex];
+          const prevGroup = prevGroups[groupIndex - 1];
+
+          const originalPrevLength = prevGroup.text.length;
+          const newText = prevGroup.text ? `${prevGroup.text}\n${currentGroup.text}` : currentGroup.text;
+
+          const updatedGroups = prevGroups
+            .map((g, idx) => {
+              if (idx === groupIndex - 1) {
+                return { ...g, text: newText };
+              }
+              return g;
+            })
+            .filter((_, idx) => idx !== groupIndex);
+
+          setActiveGroupId(prevGroup.id);
+          setTextAlign(prevGroup.align);
+
+          setTimeout(() => {
+            inputRefs.current[prevGroup.id]?.focus();
+            setSelection({ start: originalPrevLength, end: originalPrevLength });
+          }, 10);
+
+          const serialized = serializeAlignmentGroups(updatedGroups);
+          setContent(serialized);
+          setWordCount(countWords(serialized));
+          setSaved(false);
+          triggerSave(serialized, mood, attachments, isLocked);
+          recordState(titleRef.current, serialized);
+
+          return updatedGroups;
+        }
+        return prevGroups;
+      });
+    }
+  }, [selection, mood, attachments, isLocked]);
+
 
   const handleTitleChange = (text: string) => {
     setTitle(text);
@@ -276,10 +746,89 @@ export default function EntryScreen() {
   };
 
   const handleContentChange = (text: string) => {
-    setContent(text);
-    setWordCount(countWords(text));
+    lastChangeTimeRef.current = Date.now();
+    let finalCursorPos: number | null = null;
+    let updatedText = text;
+
+    if (selection && typeof selection.start === 'number' && selection.start === selection.end) {
+      // 1. Detect if Enter was pressed (newline added)
+      if (text.length === content.length + 1) {
+        const idx = selection.start;
+        if (text[idx] === '\n') {
+          const lastNewlineBefore = content.lastIndexOf('\n', idx - 1);
+          const lineStart = lastNewlineBefore === -1 ? 0 : lastNewlineBefore + 1;
+          const lineText = content.substring(lineStart, idx);
+
+          let prefixToInsert = '';
+          let isEmptyListItem = false;
+
+          const matchBullet = lineText.match(/^(•\s)/);
+          const matchNumbered = lineText.match(/^(\d+)\.\s/);
+          const matchLettered = lineText.match(/^([a-zA-Z])\.\s/);
+
+          if (matchBullet) {
+            if (lineText === '• ') {
+              isEmptyListItem = true;
+            } else {
+              prefixToInsert = '• ';
+            }
+          } else if (matchNumbered) {
+            const numStr = matchNumbered[1];
+            if (lineText === `${numStr}. `) {
+              isEmptyListItem = true;
+            } else {
+              const nextNum = parseInt(numStr, 10) + 1;
+              prefixToInsert = `${nextNum}. `;
+            }
+          } else if (matchLettered) {
+            const charStr = matchLettered[1];
+            if (lineText === `${charStr}. `) {
+              isEmptyListItem = true;
+            } else {
+              const charCode = charStr.charCodeAt(0);
+              const nextChar = String.fromCharCode(charCode + 1);
+              prefixToInsert = `${nextChar}. `;
+            }
+          }
+
+          if (isEmptyListItem) {
+            // Clear prefix from current line and don't add newline
+            updatedText = content.substring(0, lineStart) + content.substring(idx);
+            finalCursorPos = lineStart;
+          } else if (prefixToInsert) {
+            // Auto-continue list prefix on next line
+            updatedText = text.substring(0, idx + 1) + prefixToInsert + text.substring(idx + 1);
+            finalCursorPos = idx + 1 + prefixToInsert.length;
+          }
+        }
+      }
+      // 2. Detect backspace on empty list item (when user deletes the space of a prefix)
+      else if (text.length === content.length - 1) {
+        const idx = selection.start;
+        const lastNewlineBefore = content.lastIndexOf('\n', idx - 1);
+        const lineStart = lastNewlineBefore === -1 ? 0 : lastNewlineBefore + 1;
+        const lineText = content.substring(lineStart, idx);
+
+        const prefixes = ['• '];
+        let isPrefix = prefixes.includes(lineText);
+        if (!isPrefix) {
+          if (/^\d+\.\s$/.test(lineText) || /^[a-zA-Z]\.\s$/.test(lineText)) {
+            isPrefix = true;
+          }
+        }
+
+        if (isPrefix && text.substring(lineStart, idx - 1) === lineText.slice(0, -1)) {
+          // The user deleted the space of a list prefix. Clear the rest of the prefix.
+          updatedText = text.substring(0, lineStart) + text.substring(idx - 1);
+          finalCursorPos = lineStart;
+        }
+      }
+    }
+
+    setContent(updatedText);
+    setWordCount(countWords(updatedText));
     setSaved(false);
-    triggerSave(text, mood, attachments, isLocked);
+    triggerSave(updatedText, mood, attachments, isLocked);
 
     if (soundEnabled) {
       setIsTyping(true);
@@ -289,7 +838,14 @@ export default function EntryScreen() {
       }, 4000); // fade out after 4s of inactivity
     }
 
-    recordState(title, text);
+    recordState(title, updatedText);
+
+    if (finalCursorPos !== null) {
+      const pos = finalCursorPos;
+      setTimeout(() => {
+        setSelection({ start: pos, end: pos });
+      }, 0);
+    }
   };
 
   const handleMoodChange = (m: number) => {
@@ -328,6 +884,7 @@ export default function EntryScreen() {
   };
 
   const handleManualSave = async () => {
+    Keyboard.dismiss();
     if (debounceRef.current) clearTimeout(debounceRef.current);
     
     if (!content.trim() && !title.trim() && attachments.length === 0) {
@@ -338,10 +895,90 @@ export default function EntryScreen() {
 
     setSaving(true);
     const wc = countWords(content);
-    await saveEntry({ date: date!, title, content, mood, wordCount: wc, updatedAt: new Date().toISOString(), attachments, isLocked });
+    await saveEntry({
+      date: date!,
+      title,
+      content,
+      mood,
+      wordCount: wc,
+      updatedAt: new Date().toISOString(),
+      attachments,
+      isLocked,
+      isBookmarked,
+      folder,
+      textAlign,
+      indent,
+      lineHeight,
+    });
     setSaving(false);
     setSaved(true);
+    setIsEditing(false);
     setTimeout(() => setSaved(false), 2500);
+  };
+
+  const handleBookmarkToggle = () => {
+    const nextVal = !isBookmarked;
+    setIsBookmarked(nextVal);
+    isBookmarkedRef.current = nextVal;
+    triggerSave(content, { isBookmarked: nextVal });
+  };
+
+  const handleShare = async () => {
+    try {
+      const textToShare = title ? `${title}\n\n${content}` : content;
+      if (!textToShare.trim()) {
+        Alert.alert('Empty Entry', 'There is no content to share.');
+        return;
+      }
+      await Share.share({
+        title: title || 'Journal Entry',
+        message: textToShare,
+      });
+    } catch (error) {
+      console.error('Error sharing entry:', error);
+    }
+  };
+
+  const handleReminderToggle = () => {
+    Alert.alert(
+      'Journal Reminder',
+      'Set a reminder for this entry?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Set Daily Reminder', 
+          onPress: () => Alert.alert('Reminder Active', 'A notification reminder has been set for this note.') 
+        }
+      ]
+    );
+  };
+
+  const handleMoveFolder = () => {
+    Alert.alert(
+      'Move to Folder',
+      folder ? `Current folder: ${folder}` : 'Select a folder for this note:',
+      [
+        { text: 'Personal', onPress: () => selectFolder('Personal') },
+        { text: 'Ideas', onPress: () => selectFolder('Ideas') },
+        { text: 'Work', onPress: () => selectFolder('Work') },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
+
+  const selectFolder = (folderName: string) => {
+    setFolder(folderName);
+    folderRef.current = folderName;
+    triggerSave(content, { folder: folderName });
+    Alert.alert('Folder Updated', `Entry moved to "${folderName}".`);
+  };
+
+  const handleTagCategory = () => {
+    Alert.alert(
+      'Note Info',
+      `Mood rating: ${mood + 1}/5\n${folder ? `Folder: ${folder}` : 'No folder assigned'}\nWord count: ${wordCount} words`,
+      [{ text: 'OK' }]
+    );
   };
 
   const handleDelete = () => {
@@ -360,6 +997,54 @@ export default function EntryScreen() {
         },
       ]
     );
+  };
+
+  const insertListPrefix = (prefix: string) => {
+    const start = selection.start;
+    const beforeText = content.substring(0, start);
+    const lastNewlineIdx = beforeText.lastIndexOf('\n');
+    const lineStartIdx = lastNewlineIdx === -1 ? 0 : lastNewlineIdx + 1;
+    const lineText = content.substring(lineStartIdx);
+    
+    if (lineText.startsWith(prefix)) {
+      const newContent = content.substring(0, lineStartIdx) + 
+                         lineText.substring(prefix.length);
+      setContent(newContent);
+      const newPos = Math.max(0, start - prefix.length);
+      setSelection({ start: newPos, end: newPos });
+      triggerSave(newContent, mood, attachments, isLocked);
+      recordState(title, newContent);
+    } else {
+      let cleanLineText = lineText;
+      let removedLength = 0;
+      const prefixesToRemove = ['• ', '1. ', 'a. '];
+      for (const p of prefixesToRemove) {
+        if (cleanLineText.startsWith(p)) {
+          cleanLineText = cleanLineText.substring(p.length);
+          removedLength = p.length;
+          break;
+        }
+      }
+      
+      const newContent = content.substring(0, lineStartIdx) + 
+                         prefix + 
+                         cleanLineText;
+      setContent(newContent);
+      const newPos = Math.max(0, start + prefix.length - removedLength);
+      setSelection({ start: newPos, end: newPos });
+      triggerSave(newContent, mood, attachments, isLocked);
+      recordState(title, newContent);
+    }
+  };
+
+  const onApplyList = (type: 'bullet' | 'number' | 'letter') => {
+    if (type === 'bullet') {
+      insertListPrefix('• ');
+    } else if (type === 'number') {
+      insertListPrefix('1. ');
+    } else if (type === 'letter') {
+      insertListPrefix('a. ');
+    }
   };
   const formatDuration = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -457,29 +1142,6 @@ export default function EntryScreen() {
     }
   };
 
-  const currentSaveStatus = saving ? 'Saving…' : saved ? '✓ Saved' : 'Save';
-
-  useEffect(() => {
-    if (displaySaveStatus !== currentSaveStatus) {
-      Animated.timing(flipAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }).start(() => {
-        setDisplaySaveStatus(currentSaveStatus);
-        Animated.timing(flipAnim, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }).start();
-      });
-    }
-  }, [currentSaveStatus, displaySaveStatus, flipAnim]);
-
-  const saveTextRotateX = flipAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['90deg', '0deg'],
-  });
   const showHistoryButtons = historyIndex > 0 || historyIndex < history.length - 1;
 
   return (
@@ -497,57 +1159,65 @@ export default function EntryScreen() {
             </Text>
           </TouchableOpacity>
 
-          <View style={styles.navbarRightContainer}>
-            {showHistoryButtons && (
-              <>
-                {/* Undo Button */}
-                <TouchableOpacity 
-                  onPress={handleUndo} 
-                  style={styles.navActionBtn} 
-                  disabled={historyIndex <= 0}
-                  activeOpacity={0.7}
-                >
-                  <Octicons 
-                    name="undo" 
-                    size={18} 
-                    color={historyIndex <= 0 ? Colors.textFaint : Colors.accent} 
-                  />
-                </TouchableOpacity>
+          {isEditing ? (
+            <View style={styles.navbarRightContainer}>
+              {showHistoryButtons && (
+                <>
+                  {/* Undo Button */}
+                  <TouchableOpacity 
+                    onPress={handleUndo} 
+                    style={styles.navActionBtn} 
+                    disabled={historyIndex <= 0}
+                    activeOpacity={0.7}
+                  >
+                    <Octicons 
+                      name="undo" 
+                      size={18} 
+                      color={historyIndex <= 0 ? Colors.textFaint : Colors.accent} 
+                    />
+                  </TouchableOpacity>
 
-                {/* Redo Button */}
-                <TouchableOpacity 
-                  onPress={handleRedo} 
-                  style={styles.navActionBtn} 
-                  disabled={historyIndex >= history.length - 1}
-                  activeOpacity={0.7}
-                >
-                  <Octicons 
-                    name="redo" 
-                    size={18} 
-                    color={historyIndex >= history.length - 1 ? Colors.textFaint : Colors.accent} 
-                  />
-                </TouchableOpacity>
-              </>
-            )}
+                  {/* Redo Button */}
+                  <TouchableOpacity 
+                    onPress={handleRedo} 
+                    style={styles.navActionBtn} 
+                    disabled={historyIndex >= history.length - 1}
+                    activeOpacity={0.7}
+                  >
+                    <Octicons 
+                      name="redo" 
+                      size={18} 
+                      color={historyIndex >= history.length - 1 ? Colors.textFaint : Colors.accent} 
+                    />
+                  </TouchableOpacity>
+                </>
+              )}
 
-            {/* Save Button */}
-            <TouchableOpacity 
-              onPress={handleManualSave} 
-              style={styles.navBtnRight} 
-              disabled={saving || displaySaveStatus !== 'Save'}
-            >
-              <Animated.Text 
-                style={[
-                  styles.navBtnText, 
-                  styles.navSave, 
-                  displaySaveStatus === 'Saved' && styles.saveStatusSaved,
-                  { transform: [{ rotateX: saveTextRotateX }] }
-                ]}
+              {/* Save Checkmark Button */}
+              <TouchableOpacity 
+                onPress={handleManualSave} 
+                style={styles.navActionBtn} 
+                disabled={saving}
+                activeOpacity={0.7}
               >
-                {displaySaveStatus}
-              </Animated.Text>
-            </TouchableOpacity>
-          </View>
+                <Feather name="check" size={22} color={Colors.accent} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.navbarRightContainer}>
+              <TouchableOpacity 
+                onPress={handleBookmarkToggle} 
+                style={styles.navActionBtn} 
+                activeOpacity={0.7}
+              >
+                <Ionicons 
+                  name={isBookmarked ? "bookmark" : "bookmark-outline"} 
+                  size={22} 
+                  color={isBookmarked ? '#F59E0B' : Colors.accent} 
+                />
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         <ScrollView
@@ -557,12 +1227,6 @@ export default function EntryScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Mood picker */}
-          <MoodPicker selected={mood} onChange={handleMoodChange} />
-
-          {/* Divider */}
-          <View style={styles.divider} />
-
           {/* Title Input */}
           <TextInput
             style={[styles.titleInput, { fontFamily: currentFont.bodyFont }]}
@@ -573,21 +1237,42 @@ export default function EntryScreen() {
             selectionColor={Colors.accent}
           />
 
-          {/* Metadata Text */}
-          <Text style={styles.metadataText}>{getMetadataText()}</Text>
-
-          {/* Text input — uses selected font */}
-          <TextInput
-            style={[styles.input, { fontFamily: currentFont.bodyFont }]}
-            multiline
-            placeholder="What's growing in your mind today…"
-            placeholderTextColor={Colors.textFaint}
-            value={content}
-            onChangeText={handleContentChange}
-            autoFocus={!content}
-            textAlignVertical="top"
-            selectionColor={Colors.accent}
+          {/* Metadata & Compact Mood Picker Row */}
+          <MoodPicker
+            selected={mood}
+            onChange={handleMoodChange}
+            metadataText={getMetadataText()}
           />
+
+          {/* Divider */}
+          <View style={styles.divider} />
+
+          {/* Text inputs — per-paragraph alignment */}
+          <View style={{ width: '100%' }}>
+            {groups.map((group) => {
+              const isActive = group.id === activeGroupId;
+              return (
+                <ParagraphInput
+                  key={group.id}
+                  groupId={group.id}
+                  align={group.align}
+                  text={group.text}
+                  isActive={isActive}
+                  currentFont={currentFont}
+                  indent={indent}
+                  lineHeight={lineHeight}
+                  isOnly={groups.length === 1}
+                  onFocus={handleFocus}
+                  onChangeText={handleGroupTextChange}
+                  onSelectionChange={handleSelectionChange}
+                  onKeyPress={handleKeyPress}
+                  inputRef={(r) => {
+                    inputRefs.current[group.id] = r;
+                  }}
+                />
+              );
+            })}
+          </View>
 
           {/* Attachments Section — draggable */}
           {attachments.length > 0 && (
@@ -719,95 +1404,130 @@ export default function EntryScreen() {
         )}
 
         {/* Bottom bar */}
-        <View style={[styles.bottomBar, { paddingBottom: 15 }]}>
-          {/* Ambient sound toggle */}
-          <TouchableOpacity
-            style={[
-              styles.soundBtn,
-              soundEnabled && styles.soundBtnActive,
-            ]}
-            onPress={() => setSoundEnabled(!soundEnabled)}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.soundBtnIcon}>
-              {soundEnabled ? 
-              <Feather name='volume-2' size={16}/>
-              :
-              < Feather name='volume-x' size={16}/>}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Lock toggle */}
-          <TouchableOpacity
-            style={[
-              styles.soundBtn,
-              isLocked && styles.soundBtnActive,
-            ]}
-            onPress={handleLockToggle}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.soundBtnIcon}>
-              {isLocked ? 
-                <Feather name='lock' size={15} /> 
-              : 
-                <Feather name='unlock' size={15} />
-              }
-            </Text>
-          </TouchableOpacity>
-
-          {/* Voice Note Button */}
-          <TouchableOpacity
-            style={[
-              styles.soundBtn,
-              isRecording && styles.soundBtnActive,
-            ]}
-            onPress={isRecording ? () => stopRecording(true) : startRecording}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.soundBtnIcon}>
-              {isRecording ? 
-                <Feather name='mic-off' size={15} /> 
-              : 
-                <Feather name='mic' size={15} />
-              }
-            </Text>
-          </TouchableOpacity>
-
-          {/* Attach button */}
-          <TouchableOpacity
-            style={styles.attachBtn}
-            onPress={handleAttach}
-            activeOpacity={0.75}
-          >
-            <Text style={styles.attachBtnIcon}>
-              <FontAwesome6 name='image' size={15}/>
-            </Text>
-          </TouchableOpacity>
-
-          {/* Font picker button */}
-          <TouchableOpacity
-            style={styles.fontBtn}
-            onPress={() => setShowFontPicker(true)}
-            activeOpacity={0.75}
-          >
-            <Text style={[styles.fontBtnLabel, { fontFamily: currentFont.bodyFont }]}>Aa</Text>
-          </TouchableOpacity>
-
-          {/* Delete */}
-          {content.trim() && (
-            <TouchableOpacity onPress={handleDelete} style={styles.deleteBtn}>
-              <Text style={styles.deleteBtnText}>
-                <MaterialIcons name="delete-outline" size={16}/>
+        {isEditing ? (
+          /* Writing Mode Bottom Bar (Only typing/writing tools) */
+          <View style={[styles.bottomBar, { paddingBottom: 15 }]}>
+            {/* Ambient sound toggle */}
+            <TouchableOpacity
+              style={[
+                styles.soundBtn,
+                soundEnabled && styles.soundBtnActive,
+              ]}
+              onPress={() => setSoundEnabled(!soundEnabled)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.soundBtnIcon}>
+                {soundEnabled ? 
+                <Feather name='volume-2' size={16}/>
+                :
+                < Feather name='volume-x' size={16}/>}
               </Text>
             </TouchableOpacity>
-          )}
-        </View>
+
+            {/* Voice Note Button */}
+            <TouchableOpacity
+              style={[
+                styles.soundBtn,
+                isRecording && styles.soundBtnActive,
+              ]}
+              onPress={isRecording ? () => stopRecording(true) : startRecording}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.soundBtnIcon}>
+                {isRecording ? 
+                  <Feather name='mic-off' size={15} /> 
+                : 
+                  <Feather name='mic' size={15} />
+                }
+              </Text>
+            </TouchableOpacity>
+
+            {/* Attach button */}
+            <TouchableOpacity
+              style={styles.attachBtn}
+              onPress={handleAttach}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.attachBtnIcon}>
+                <FontAwesome6 name='image' size={15}/>
+              </Text>
+            </TouchableOpacity>
+
+            {/* Paragraph Style Button */}
+            <TouchableOpacity
+              style={styles.soundBtn}
+              onPress={() => setShowParagraphStyleModal(true)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.soundBtnIcon}>
+                <Feather name="align-left" size={15} />
+              </Text>
+            </TouchableOpacity>
+
+            {/* Font picker button */}
+            <TouchableOpacity
+              style={styles.fontBtn}
+              onPress={() => setShowFontPicker(true)}
+              activeOpacity={0.75}
+            >
+              <Text style={[styles.fontBtnLabel, { fontFamily: currentFont.bodyFont }]}>Aa</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          /* Post-Save Mode Bottom Bar (Note Management Options: Clock, Tag/Shirt, Trash, Folder, Lock, Share) */
+          <View style={[styles.bottomBar, { paddingBottom: 15, justifyContent: 'space-around' }]}>
+            {/* Reminder / Alarm */}
+            {/* This feature is not needed right now  */}
+            {/* <TouchableOpacity style={styles.savedBarBtn} onPress={handleReminderToggle} activeOpacity={0.75}>
+              <Feather name="clock" size={16} color={Colors.accent} />
+            </TouchableOpacity> */}
+
+            {/* Tag / Category / Shirt */}
+            <TouchableOpacity style={styles.savedBarBtn} onPress={handleTagCategory} activeOpacity={0.75}>
+              <FontAwesome6 name="shirt" size={15} color={Colors.accent} />
+            </TouchableOpacity>
+
+            {/* Delete */}
+            <TouchableOpacity style={styles.savedBarDeleteBtn} onPress={handleDelete} activeOpacity={0.75}>
+              <MaterialIcons name="delete-outline" size={18} color={Colors.danger} />
+            </TouchableOpacity>
+
+            {/* Move to Folder */} 
+            {/* this feature is not needed right now  */}
+            {/* <TouchableOpacity style={styles.savedBarBtn} onPress={handleMoveFolder} activeOpacity={0.75}>
+              <Feather name="folder" size={16} color={Colors.accent} />
+            </TouchableOpacity> */}
+
+            {/* Lock / Unlock */}
+            <TouchableOpacity
+              style={[styles.savedBarBtn, isLocked && styles.soundBtnActive]}
+              onPress={handleLockToggle}
+              activeOpacity={0.75}
+            >
+              <Feather name={isLocked ? "lock" : "unlock"} size={16} color={isLocked ? Colors.accent : Colors.accent} />
+            </TouchableOpacity>
+
+            {/* Share */}
+            <TouchableOpacity style={styles.savedBarBtn} onPress={handleShare} activeOpacity={0.75}>
+              <Ionicons name="share-outline" size={18} color={Colors.accent} />
+            </TouchableOpacity>
+          </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* Font picker modal */}
       <FontPicker
         visible={showFontPicker}
         onClose={() => setShowFontPicker(false)}
+      />
+
+      {/* Paragraph Style Modal */}
+      <ParagraphStyleModal
+        visible={showParagraphStyleModal}
+        onClose={() => setShowParagraphStyleModal(false)}
+        textAlign={textAlign}
+        onChangeTextAlign={handleAlignmentChange}
+        onApplyList={onApplyList}
       />
 
       {/* Lightbox modal */}
@@ -876,6 +1596,42 @@ const styles = StyleSheet.create({
   navActionBtn: {
     padding: 6,
   },
+  navEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.accentSoft,
+    borderWidth: 1,
+    borderColor: Colors.accentDim + '40',
+  },
+  navEditText: {
+    fontFamily: Typography.bodyMedium,
+    fontSize: 13,
+    color: Colors.accent,
+  },
+  savedBarBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  savedBarDeleteBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.danger + '12',
+    borderWidth: 1,
+    borderColor: Colors.danger + '30',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   navBtnText: {
     fontFamily: Typography.bodyMedium,
     fontSize: 14,
@@ -922,7 +1678,9 @@ const styles = StyleSheet.create({
     fontSize: 17,
     color: Colors.text,
     lineHeight: 30,
-    minHeight: 320,
+    width: '100%',
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   bottomBar: {
     flexDirection: 'row',
@@ -1145,16 +1903,16 @@ const styles = StyleSheet.create({
     color: '#FFF',
   },
   titleInput: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: 'bold',
     color: Colors.text,
     marginBottom: 6,
-    paddingVertical: 4,
+    paddingVertical: 2,
     paddingHorizontal: 0,
   },
   metadataText: {
     fontFamily: Typography.body,
-    fontSize: 12,
+    fontSize: 10,
     color: Colors.textMuted,
     marginBottom: 16,
   },

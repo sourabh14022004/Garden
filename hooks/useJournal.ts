@@ -3,18 +3,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export interface Attachment {
   id: string;
   uri: string;
-  type: 'image' | 'document';
+  type: 'image' | 'document' | 'audio';
   name: string;
+  x?: number;
+  y?: number;
 }
 
 export interface JournalEntry {
   date: string;      // "YYYY-MM-DD"
+  title?: string;
   content: string;
   mood: number;      // 0–4
   wordCount: number;
   updatedAt: string; // ISO timestamp
   attachments?: Attachment[];
   isLocked?: boolean;
+  isBookmarked?: boolean;
+  folder?: string;
+  textAlign?: 'left' | 'center' | 'right' | 'justify';
+  indent?: number;
+  lineHeight?: number;
 }
 
 const STORAGE_KEY = '@garden:entries';
@@ -35,7 +43,8 @@ async function saveMap(map: Record<string, JournalEntry>): Promise<void> {
 }
 
 export function countWords(text: string): number {
-  return text.trim().split(/\s+/).filter(Boolean).length;
+  const clean = text.replace(/<\/?(center|right|justify|left)>/gi, '');
+  return clean.trim().split(/\s+/).filter(Boolean).length;
 }
 
 export function formatDate(date: Date): string {
@@ -110,16 +119,50 @@ export async function getAllEntries(): Promise<JournalEntry[]> {
     (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
   );
 }
+export function isEntryNonEmpty(entry: JournalEntry | null | undefined): boolean {
+  if (!entry) return false;
+  const hasText = !!entry.content?.trim();
+  const hasTitle = !!entry.title?.trim();
+  const hasAtt = !!(entry.attachments && entry.attachments.length > 0);
+  return hasText || hasTitle || hasAtt;
+}
 
 export async function hasEntry(date: string): Promise<boolean> {
   const map = await getAllMap();
-  return !!map[date]?.content?.trim();
+  return isEntryNonEmpty(map[date]);
 }
 
 export async function getDatesWithEntries(): Promise<Set<string>> {
   const map = await getAllMap();
   const dates = Object.entries(map)
-    .filter(([, e]) => e.content?.trim())
+    .filter(([, e]) => isEntryNonEmpty(e))
     .map(([date]) => date);
   return new Set(dates);
+}
+
+export function getEntryDisplay(entry: JournalEntry) {
+  const cleanContent = entry.content ? entry.content.replace(/<\/?(center|right|justify|left)>/gi, '').trim() : '';
+  if (entry.title && entry.title.trim()) {
+    return {
+      title: entry.title.trim(),
+      preview: cleanContent
+    };
+  }
+  
+  if (!cleanContent) {
+    let title = 'Untitled Entry';
+    if (entry.attachments && entry.attachments.length > 0) {
+      const voiceNote = entry.attachments.find(a => a.type === 'audio');
+      title = voiceNote ? (voiceNote.name || 'Voice Note') : 'Attachment Entry';
+    }
+    return {
+      title,
+      preview: ''
+    };
+  }
+
+  const lines = cleanContent.split('\n').map(l => l.trim()).filter(Boolean);
+  const title = lines[0] || 'Untitled Entry';
+  const preview = lines.slice(1).join(' ');
+  return { title, preview };
 }

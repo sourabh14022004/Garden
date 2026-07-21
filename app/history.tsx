@@ -12,7 +12,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import EntryCard from '../components/EntryCard';
 import { Colors, Spacing, Typography, Radius } from '../constants/theme';
-import { getAllEntries, JournalEntry } from '../hooks/useJournal';
+import { getAllEntries, JournalEntry, isEntryNonEmpty } from '../hooks/useJournal';
 
 export default function HistoryScreen() {
   const router = useRouter();
@@ -22,7 +22,7 @@ export default function HistoryScreen() {
 
   const load = async () => {
     const all = await getAllEntries();
-    setEntries(all.filter((e) => e.content?.trim()));
+    setEntries(all.filter(isEntryNonEmpty));
     setLoading(false);
   };
 

@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Radius, Spacing, Typography } from '../constants/theme';
 import { useAmbientSound } from '../hooks/useAmbientSound';
-import { getAllEntries, JournalEntry } from '../hooks/useJournal';
+import { getAllEntries, JournalEntry, isEntryNonEmpty } from '../hooks/useJournal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as LocalAuthentication from 'expo-local-authentication';
 
@@ -185,7 +185,7 @@ export default function ProfileScreen() {
       hasNavigated.current = false;
       (async () => {
         const all = await getAllEntries();
-        const withContent = all.filter((e) => e.content?.trim());
+        const withContent = all.filter(isEntryNonEmpty);
         setTotalEntries(withContent.length);
         setTotalWords(withContent.reduce((sum, e) => sum + (e.wordCount || 0), 0));
 

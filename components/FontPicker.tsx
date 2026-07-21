@@ -142,7 +142,7 @@ export default function FontPicker({ visible, onClose }: Props) {
 const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(26, 44, 30, 0.45)',
+    backgroundColor: 'transparent',
   },
   sheet: {
     position: 'absolute',
@@ -153,12 +153,14 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.card,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    borderTopWidth: 1.5,
+    borderTopColor: Colors.cardBorder,
     paddingBottom: 34,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 16,
+    shadowColor: '#1A2C1E',
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 24,
   },
   handle: {
     width: 40,
