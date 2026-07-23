@@ -1481,9 +1481,10 @@ export default function EntryScreen() {
             </TouchableOpacity> */}
 
             {/* Tag / Category / Shirt */}
-            <TouchableOpacity style={styles.savedBarBtn} onPress={handleTagCategory} activeOpacity={0.75}>
+            {/* This feature is not needed right now  */}
+            {/* <TouchableOpacity style={styles.savedBarBtn} onPress={handleTagCategory} activeOpacity={0.75}>
               <FontAwesome6 name="shirt" size={15} color={Colors.accent} />
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             {/* Delete */}
             <TouchableOpacity style={styles.savedBarDeleteBtn} onPress={handleDelete} activeOpacity={0.75}>

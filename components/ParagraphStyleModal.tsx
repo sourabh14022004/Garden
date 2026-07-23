@@ -15,7 +15,7 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   textAlign: 'left' | 'center' | 'right' | 'justify';
-  onChangeTextAlign: (align: 'left' | 'center' | 'right' | 'justify') => void;
+  onChangeTextAlign: (align: 'left' | 'center' | 'right') => void;
   onApplyList: (type: 'bullet' | 'number' | 'letter') => void;
 }
 
@@ -48,12 +48,11 @@ export default function ParagraphStyleModal({
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Alignment</Text>
                 <View style={styles.row}>
-                  {(['left', 'center', 'right', 'justify'] as const).map((align) => {
+                  {(['left', 'center', 'right'] as const).map((align) => {
                     const isActive = textAlign === align;
-                    let iconName: 'align-left' | 'align-center' | 'align-right' | 'align-justify' = 'align-left';
+                    let iconName: 'align-left' | 'align-center' | 'align-right' = 'align-left';
                     if (align === 'center') iconName = 'align-center';
                     if (align === 'right') iconName = 'align-right';
-                    if (align === 'justify') iconName = 'align-justify';
 
                     return (
                       <TouchableOpacity
