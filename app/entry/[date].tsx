@@ -235,6 +235,7 @@ interface ParagraphInputProps {
   indent: number;
   lineHeight: number;
   isOnly: boolean;
+  selection?: { start: number; end: number };
   onFocus: (id: string, align: 'left' | 'center' | 'right' | 'justify') => void;
   onChangeText: (id: string, text: string) => void;
   onSelectionChange: (id: string, sel: { start: number; end: number }) => void;
@@ -251,6 +252,7 @@ const ParagraphInput = React.memo(({
   indent,
   lineHeight,
   isOnly,
+  selection,
   onFocus,
   onChangeText,
   onSelectionChange,
@@ -292,6 +294,7 @@ const ParagraphInput = React.memo(({
       placeholder={isOnly ? "What's growing in your mind today…" : undefined}
       placeholderTextColor={Colors.textFaint}
       value={text}
+      selection={isActive ? selection : undefined}
       onFocus={handleFocus}
       onChangeText={handleChangeText}
       onSelectionChange={handleSelectionChange}
@@ -358,12 +361,18 @@ export default function EntryScreen() {
   const [indent, setIndent] = useState(0);
   const [lineHeight, setLineHeight] = useState(30);
   const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const selectionRef = useRef({ start: 0, end: 0 });
+  useEffect(() => { selectionRef.current = selection; }, [selection]);
 
   // Alignment groups state for per-paragraph alignment
   const [groups, setGroups] = useState<AlignmentGroup[]>([
     { id: 'group-0', align: 'left', text: '' },
   ]);
+  const groupsRef = useRef<AlignmentGroup[]>([{ id: 'group-0', align: 'left', text: '' }]);
+  useEffect(() => { groupsRef.current = groups; }, [groups]);
   const [activeGroupId, setActiveGroupId] = useState<string>('group-0');
+  const activeGroupIdRef = useRef<string>('group-0');
+  useEffect(() => { activeGroupIdRef.current = activeGroupId; }, [activeGroupId]);
   const inputRefs = useRef<Record<string, TextInput | null>>({});
 
   // Voice recording state
@@ -391,7 +400,8 @@ export default function EntryScreen() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordHistoryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasTyping = useRef(false);
-  const lastChangeTimeRef = useRef(0);
+  const skipNextTextChangeRef = useRef(false);
+
 
   const textAlignRef = useRef<'left' | 'center' | 'right' | 'justify'>('left');
   const indentRef = useRef(0);
@@ -639,8 +649,79 @@ export default function EntryScreen() {
   };
 
   const handleGroupTextChange = useCallback((groupId: string, newText: string) => {
+    // If handleKeyPress already handled this backspace (prefix removal),
+    // skip the stale native onChangeText that follows
+    if (skipNextTextChangeRef.current) {
+      skipNextTextChangeRef.current = false;
+      return;
+    }
+
     setGroups((prevGroups) => {
-      const updated = prevGroups.map((g) => (g.id === groupId ? { ...g, text: newText } : g));
+      const groupIndex = prevGroups.findIndex((g) => g.id === groupId);
+      const currentGroup = groupIndex !== -1 ? prevGroups[groupIndex] : null;
+      const oldText = currentGroup ? currentGroup.text : '';
+
+      let finalText = newText;
+      const sel = selectionRef.current;
+
+      // Auto list continuation on Enter
+      if (newText.length === oldText.length + 1 && sel.start === sel.end) {
+        const idx = sel.start;
+        if (newText[idx] === '\n') {
+          const lastNewlineBefore = oldText.lastIndexOf('\n', idx - 1);
+          const lineStart = lastNewlineBefore === -1 ? 0 : lastNewlineBefore + 1;
+          const lineText = oldText.substring(lineStart, idx);
+
+          let prefixToInsert = '';
+          let isEmptyListItem = false;
+
+          const matchBullet = lineText.match(/^(\s*•\s)/);
+          const matchNumbered = lineText.match(/^(\s*(\d+)\.\s)/);
+          const matchLettered = lineText.match(/^(\s*([a-zA-Z])\.\s)/);
+
+          if (matchBullet) {
+            if (lineText.trim() === '•') {
+              isEmptyListItem = true;
+            } else {
+              prefixToInsert = '   • ';
+            }
+          } else if (matchNumbered) {
+            const numStr = matchNumbered[2];
+            if (lineText.trim() === `${numStr}.`) {
+              isEmptyListItem = true;
+            } else {
+              const nextNum = parseInt(numStr, 10) + 1;
+              prefixToInsert = `   ${nextNum}. `;
+            }
+          } else if (matchLettered) {
+            const charStr = matchLettered[2];
+            if (lineText.trim() === `${charStr}.`) {
+              isEmptyListItem = true;
+            } else {
+              const charCode = charStr.charCodeAt(0);
+              const nextChar = String.fromCharCode(charCode + 1);
+              prefixToInsert = `   ${nextChar}. `;
+            }
+          }
+
+          if (isEmptyListItem) {
+            finalText = oldText.substring(0, lineStart) + oldText.substring(idx);
+            setTimeout(() => {
+              setSelection({ start: lineStart, end: lineStart });
+            }, 10);
+          } else if (prefixToInsert) {
+            finalText = newText.substring(0, idx + 1) + prefixToInsert + newText.substring(idx + 1);
+            const newCursor = idx + 1 + prefixToInsert.length;
+            setTimeout(() => {
+              setSelection({ start: newCursor, end: newCursor });
+            }, 10);
+          }
+        }
+      }
+      // Note: Backspace list-prefix removal is handled exclusively by handleKeyPress
+      // to avoid double-processing
+
+      const updated = prevGroups.map((g) => (g.id === groupId ? { ...g, text: finalText } : g));
       const serialized = serializeAlignmentGroups(updated);
       setContent(serialized);
       setWordCount(countWords(serialized));
@@ -693,10 +774,95 @@ export default function EntryScreen() {
   }, []);
 
   const handleKeyPress = useCallback((groupId: string, key: string) => {
+    const sel = selectionRef.current;
+    const currentGroups = groupsRef.current;
+
+    if (key === 'Backspace' && sel.start === sel.end) {
+      const groupIndex = currentGroups.findIndex((g) => g.id === groupId);
+      if (groupIndex !== -1) {
+        const text = currentGroups[groupIndex].text || '';
+        const selStart = sel.start;
+        const textBefore = text.substring(0, selStart);
+        const lineStart = textBefore.lastIndexOf('\n') === -1 ? 0 : textBefore.lastIndexOf('\n') + 1;
+        const lineAfterStart = text.substring(lineStart);
+        const nextNewline = lineAfterStart.indexOf('\n');
+        const currentLineText = nextNewline === -1 ? lineAfterStart : lineAfterStart.substring(0, nextNewline);
+
+        const prefixMatch = currentLineText.match(/^(\s*•\s*|\s*\d+\.\s*|\s*[a-zA-Z]\.\s*)/);
+        const incompleteMatch = currentLineText.match(/^(\s*•|\s*\d+\.|\s*\d+|\s*[a-zA-Z]\.|\s*[a-zA-Z])$/);
+
+        // Check if this is an empty list item (line is ONLY a prefix with no real content)
+        // Behave identically to pressing Enter on an empty list item: strip entire prefix
+        const isEmptyListItem = prefixMatch && currentLineText.trim().length <= prefixMatch[0].trim().length;
+
+        if (isEmptyListItem && selStart >= lineStart && selStart <= lineStart + currentLineText.length) {
+          // Remove the entire prefix line content, same as Enter on empty list item
+          const afterLine = nextNewline === -1 ? '' : lineAfterStart.substring(nextNewline);
+          const newGroupText = text.substring(0, lineStart) + afterLine;
+
+          const updatedGroups = currentGroups.map((g, idx) =>
+            idx === groupIndex ? { ...g, text: newGroupText } : g
+          );
+
+          skipNextTextChangeRef.current = true;
+          setGroups(updatedGroups);
+          setSelection({ start: lineStart, end: lineStart });
+
+          const serialized = serializeAlignmentGroups(updatedGroups);
+          setContent(serialized);
+          setWordCount(countWords(serialized));
+          setSaved(false);
+          triggerSave(serialized, mood, attachments, isLocked);
+          recordState(titleRef.current, serialized);
+          return;
+        } else if (prefixMatch && !isEmptyListItem && selStart >= lineStart && selStart <= lineStart + prefixMatch[0].length + 1) {
+          const prefixLen = prefixMatch[0].length;
+          const restOfLine = currentLineText.substring(prefixLen);
+          const afterLine = nextNewline === -1 ? '' : lineAfterStart.substring(nextNewline);
+          const newGroupText = text.substring(0, lineStart) + restOfLine + afterLine;
+
+          const updatedGroups = currentGroups.map((g, idx) =>
+            idx === groupIndex ? { ...g, text: newGroupText } : g
+          );
+
+          skipNextTextChangeRef.current = true;
+          setGroups(updatedGroups);
+          setSelection({ start: lineStart, end: lineStart });
+
+          const serialized = serializeAlignmentGroups(updatedGroups);
+          setContent(serialized);
+          setWordCount(countWords(serialized));
+          setSaved(false);
+          triggerSave(serialized, mood, attachments, isLocked);
+          recordState(titleRef.current, serialized);
+          return;
+        } else if (incompleteMatch && selStart >= lineStart && selStart <= lineStart + currentLineText.length + 1) {
+          const afterLine = nextNewline === -1 ? '' : lineAfterStart.substring(nextNewline);
+          const newGroupText = text.substring(0, lineStart) + afterLine;
+
+          const updatedGroups = currentGroups.map((g, idx) =>
+            idx === groupIndex ? { ...g, text: newGroupText } : g
+          );
+
+          skipNextTextChangeRef.current = true;
+          setGroups(updatedGroups);
+          setSelection({ start: lineStart, end: lineStart });
+
+          const serialized = serializeAlignmentGroups(updatedGroups);
+          setContent(serialized);
+          setWordCount(countWords(serialized));
+          setSaved(false);
+          triggerSave(serialized, mood, attachments, isLocked);
+          recordState(titleRef.current, serialized);
+          return;
+        }
+      }
+    }
+
     if (key === 'Backspace') {
       setGroups((prevGroups) => {
         const groupIndex = prevGroups.findIndex((g) => g.id === groupId);
-        if (groupIndex > 0 && selection.start === 0 && selection.end === 0) {
+        if (groupIndex > 0 && sel.start === 0 && sel.end === 0) {
           const currentGroup = prevGroups[groupIndex];
           const prevGroup = prevGroups[groupIndex - 1];
 
@@ -732,7 +898,7 @@ export default function EntryScreen() {
         return prevGroups;
       });
     }
-  }, [selection, mood, attachments, isLocked]);
+  }, [mood, attachments, isLocked]);
 
 
   const handleTitleChange = (text: string) => {
@@ -743,108 +909,8 @@ export default function EntryScreen() {
     recordState(text, content);
   };
 
-  const handleContentChange = (text: string) => {
-    lastChangeTimeRef.current = Date.now();
-    let finalCursorPos: number | null = null;
-    let updatedText = text;
-
-    if (selection && typeof selection.start === 'number' && selection.start === selection.end) {
-      // 1. Detect if Enter was pressed (newline added)
-      if (text.length === content.length + 1) {
-        const idx = selection.start;
-        if (text[idx] === '\n') {
-          const lastNewlineBefore = content.lastIndexOf('\n', idx - 1);
-          const lineStart = lastNewlineBefore === -1 ? 0 : lastNewlineBefore + 1;
-          const lineText = content.substring(lineStart, idx);
-
-          let prefixToInsert = '';
-          let isEmptyListItem = false;
-
-          const matchBullet = lineText.match(/^(•\s)/);
-          const matchNumbered = lineText.match(/^(\d+)\.\s/);
-          const matchLettered = lineText.match(/^([a-zA-Z])\.\s/);
-
-          if (matchBullet) {
-            if (lineText === '• ') {
-              isEmptyListItem = true;
-            } else {
-              prefixToInsert = '• ';
-            }
-          } else if (matchNumbered) {
-            const numStr = matchNumbered[1];
-            if (lineText === `${numStr}. `) {
-              isEmptyListItem = true;
-            } else {
-              const nextNum = parseInt(numStr, 10) + 1;
-              prefixToInsert = `${nextNum}. `;
-            }
-          } else if (matchLettered) {
-            const charStr = matchLettered[1];
-            if (lineText === `${charStr}. `) {
-              isEmptyListItem = true;
-            } else {
-              const charCode = charStr.charCodeAt(0);
-              const nextChar = String.fromCharCode(charCode + 1);
-              prefixToInsert = `${nextChar}. `;
-            }
-          }
-
-          if (isEmptyListItem) {
-            // Clear prefix from current line and don't add newline
-            updatedText = content.substring(0, lineStart) + content.substring(idx);
-            finalCursorPos = lineStart;
-          } else if (prefixToInsert) {
-            // Auto-continue list prefix on next line
-            updatedText = text.substring(0, idx + 1) + prefixToInsert + text.substring(idx + 1);
-            finalCursorPos = idx + 1 + prefixToInsert.length;
-          }
-        }
-      }
-      // 2. Detect backspace on empty list item (when user deletes the space of a prefix)
-      else if (text.length === content.length - 1) {
-        const idx = selection.start;
-        const lastNewlineBefore = content.lastIndexOf('\n', idx - 1);
-        const lineStart = lastNewlineBefore === -1 ? 0 : lastNewlineBefore + 1;
-        const lineText = content.substring(lineStart, idx);
-
-        const prefixes = ['• '];
-        let isPrefix = prefixes.includes(lineText);
-        if (!isPrefix) {
-          if (/^\d+\.\s$/.test(lineText) || /^[a-zA-Z]\.\s$/.test(lineText)) {
-            isPrefix = true;
-          }
-        }
-
-        if (isPrefix && text.substring(lineStart, idx - 1) === lineText.slice(0, -1)) {
-          // The user deleted the space of a list prefix. Clear the rest of the prefix.
-          updatedText = text.substring(0, lineStart) + text.substring(idx - 1);
-          finalCursorPos = lineStart;
-        }
-      }
-    }
-
-    setContent(updatedText);
-    setWordCount(countWords(updatedText));
-    setSaved(false);
-    triggerSave(updatedText, mood, attachments, isLocked);
-
-    if (soundEnabled) {
-      setIsTyping(true);
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        setIsTyping(false);
-      }, 4000); // fade out after 4s of inactivity
-    }
-
-    recordState(title, updatedText);
-
-    if (finalCursorPos !== null) {
-      const pos = finalCursorPos;
-      setTimeout(() => {
-        setSelection({ start: pos, end: pos });
-      }, 0);
-    }
-  };
+  // Note: handleContentChange was removed — all text editing is now handled
+  // through handleGroupTextChange which operates on alignment groups.
 
   const handleMoodChange = (m: number) => {
     setMood(m);
@@ -997,52 +1063,135 @@ export default function EntryScreen() {
     );
   };
 
-  const insertListPrefix = (prefix: string) => {
-    const start = selection.start;
-    const beforeText = content.substring(0, start);
-    const lastNewlineIdx = beforeText.lastIndexOf('\n');
-    const lineStartIdx = lastNewlineIdx === -1 ? 0 : lastNewlineIdx + 1;
-    const lineText = content.substring(lineStartIdx);
-    
-    if (lineText.startsWith(prefix)) {
-      const newContent = content.substring(0, lineStartIdx) + 
-                         lineText.substring(prefix.length);
-      setContent(newContent);
-      const newPos = Math.max(0, start - prefix.length);
-      setSelection({ start: newPos, end: newPos });
-      triggerSave(newContent, mood, attachments, isLocked);
-      recordState(title, newContent);
-    } else {
-      let cleanLineText = lineText;
-      let removedLength = 0;
-      const prefixesToRemove = ['• ', '1. ', 'a. '];
-      for (const p of prefixesToRemove) {
-        if (cleanLineText.startsWith(p)) {
-          cleanLineText = cleanLineText.substring(p.length);
-          removedLength = p.length;
-          break;
-        }
-      }
-      
-      const newContent = content.substring(0, lineStartIdx) + 
-                         prefix + 
-                         cleanLineText;
-      setContent(newContent);
-      const newPos = Math.max(0, start + prefix.length - removedLength);
-      setSelection({ start: newPos, end: newPos });
-      triggerSave(newContent, mood, attachments, isLocked);
-      recordState(title, newContent);
-    }
+  const getActiveListType = (): 'bullet' | 'number' | 'letter' | null => {
+    const currentSel = selectionRef.current;
+    const currentActiveGroupId = activeGroupIdRef.current;
+    const currentGroups = groupsRef.current;
+    const activeGroup = currentGroups.find((g) => g.id === currentActiveGroupId) || currentGroups[0];
+    if (!activeGroup || !activeGroup.text) return null;
+    const text = activeGroup.text;
+    const selStart = currentSel.start;
+    const textBeforeSel = text.substring(0, selStart);
+    const lineStart = textBeforeSel.lastIndexOf('\n') === -1 ? 0 : textBeforeSel.lastIndexOf('\n') + 1;
+    const nextNewline = text.indexOf('\n', selStart);
+    const lineEnd = nextNewline === -1 ? text.length : nextNewline;
+    const lineText = text.substring(lineStart, lineEnd);
+
+    if (/^\s*•\s/.test(lineText)) return 'bullet';
+    if (/^\s*\d+\.\s/.test(lineText)) return 'number';
+    if (/^\s*[a-zA-Z]\.\s/.test(lineText)) return 'letter';
+    return null;
   };
 
   const onApplyList = (type: 'bullet' | 'number' | 'letter') => {
-    if (type === 'bullet') {
-      insertListPrefix('• ');
-    } else if (type === 'number') {
-      insertListPrefix('1. ');
-    } else if (type === 'letter') {
-      insertListPrefix('a. ');
-    }
+    const sel = selectionRef.current;
+    const currentActiveGroupId = activeGroupIdRef.current;
+
+    setGroups((prevGroups) => {
+      const groupIndex = prevGroups.findIndex((g) => g.id === currentActiveGroupId);
+      const targetIndex = groupIndex === -1 ? 0 : groupIndex;
+      const currentGroup = prevGroups[targetIndex];
+      if (!currentGroup) return prevGroups;
+
+      const text = currentGroup.text || '';
+      const selStart = Math.min(sel.start, sel.end);
+      const selEnd = Math.max(sel.start, sel.end);
+
+      const textBeforeStart = text.substring(0, selStart);
+      const lineStartIdx = textBeforeStart.lastIndexOf('\n') === -1 ? 0 : textBeforeStart.lastIndexOf('\n') + 1;
+
+      const textBeforeEnd = text.substring(0, selEnd);
+
+      const lines = text.split('\n');
+      const lineCountBeforeStart = (textBeforeStart.match(/\n/g) || []).length;
+      const lineCountBeforeEnd = (textBeforeEnd.match(/\n/g) || []).length;
+
+      const affectedLines = lines.slice(lineCountBeforeStart, lineCountBeforeEnd + 1);
+
+      const isBulletPattern = (l: string) => /^\s*•\s/.test(l);
+      const isNumberPattern = (l: string) => /^\s*\d+\.\s/.test(l);
+      const isLetterPattern = (l: string) => /^\s*[a-zA-Z]\.\s/.test(l);
+
+      let allHaveTargetPrefix = false;
+      if (type === 'bullet') {
+        allHaveTargetPrefix = affectedLines.every(isBulletPattern);
+      } else if (type === 'number') {
+        allHaveTargetPrefix = affectedLines.every(isNumberPattern);
+      } else if (type === 'letter') {
+        allHaveTargetPrefix = affectedLines.every(isLetterPattern);
+      }
+
+      const removeAnyListPrefix = (l: string) => {
+        return l.replace(/^\s*(•\s|\d+\.\s|[a-zA-Z]\.\s)/, '');
+      };
+
+      // Track cumulative offset caused by prefix changes on lines before cursor
+      let offsetBeforeCursorStart = 0;
+      let offsetBeforeCursorEnd = 0;
+
+      const newLines = lines.map((line, idx) => {
+        if (idx >= lineCountBeforeStart && idx <= lineCountBeforeEnd) {
+          if (allHaveTargetPrefix) {
+            // Removing prefixes (toggle off)
+            const cleaned = removeAnyListPrefix(line);
+            const diff = line.length - cleaned.length;
+            if (idx <= lineCountBeforeStart) offsetBeforeCursorStart += diff;
+            offsetBeforeCursorEnd += diff;
+            return cleaned;
+          } else {
+            // Adding prefixes
+            const cleaned = removeAnyListPrefix(line);
+            let prefix = '';
+            if (type === 'bullet') {
+              prefix = '   • ';
+            } else if (type === 'number') {
+              const num = idx - lineCountBeforeStart + 1;
+              prefix = `   ${num}. `;
+            } else if (type === 'letter') {
+              const letterCode = 'a'.charCodeAt(0) + (idx - lineCountBeforeStart);
+              const letter = String.fromCharCode(letterCode);
+              prefix = `   ${letter}. `;
+            }
+
+            const newLine = prefix + cleaned;
+            const diff = newLine.length - line.length;
+            if (idx <= lineCountBeforeStart) offsetBeforeCursorStart += diff;
+            offsetBeforeCursorEnd += diff;
+            return newLine;
+          }
+        }
+        return line;
+      });
+
+      const newSelStart = allHaveTargetPrefix
+        ? Math.max(lineStartIdx, selStart - offsetBeforeCursorStart)
+        : selStart + offsetBeforeCursorStart;
+      const newSelEnd = allHaveTargetPrefix
+        ? Math.max(0, selEnd - offsetBeforeCursorEnd)
+        : selEnd + offsetBeforeCursorEnd;
+
+      const newGroupText = newLines.join('\n');
+      const updatedGroups = prevGroups.map((g, idx) =>
+        idx === targetIndex ? { ...g, text: newGroupText } : g
+      );
+
+      const serialized = serializeAlignmentGroups(updatedGroups);
+      setContent(serialized);
+      setWordCount(countWords(serialized));
+      setSaved(false);
+      triggerSave(serialized, mood, attachments, isLocked);
+      recordState(titleRef.current, serialized);
+
+      setTimeout(() => {
+        inputRefs.current[currentGroup.id]?.focus();
+        setSelection({ start: newSelStart, end: newSelEnd });
+      }, 50);
+
+      return updatedGroups;
+    });
+
+    // Close the modal after applying
+    setShowParagraphStyleModal(false);
   };
   const formatDuration = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -1256,6 +1405,7 @@ export default function EntryScreen() {
                   align={group.align}
                   text={group.text}
                   isActive={isActive}
+                  selection={selection}
                   currentFont={currentFont}
                   indent={indent}
                   lineHeight={lineHeight}
@@ -1527,6 +1677,7 @@ export default function EntryScreen() {
         textAlign={textAlign}
         onChangeTextAlign={handleAlignmentChange}
         onApplyList={onApplyList}
+        activeListType={getActiveListType()}
       />
 
       {/* Lightbox modal */}

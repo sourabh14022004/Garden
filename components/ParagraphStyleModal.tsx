@@ -17,6 +17,7 @@ interface Props {
   textAlign: 'left' | 'center' | 'right' | 'justify';
   onChangeTextAlign: (align: 'left' | 'center' | 'right') => void;
   onApplyList: (type: 'bullet' | 'number' | 'letter') => void;
+  activeListType?: 'bullet' | 'number' | 'letter' | null;
 }
 
 export default function ParagraphStyleModal({
@@ -25,7 +26,12 @@ export default function ParagraphStyleModal({
   textAlign,
   onChangeTextAlign,
   onApplyList,
+  activeListType,
 }: Props) {
+  const isBulletActive = activeListType === 'bullet';
+  const isNumberActive = activeListType === 'number';
+  const isLetterActive = activeListType === 'letter';
+
   return (
     <Modal
       visible={visible}
@@ -82,37 +88,52 @@ export default function ParagraphStyleModal({
                   <TouchableOpacity
                     onPress={() => {
                       onApplyList('bullet');
-                      onClose();
                     }}
-                    style={styles.listBtn}
+                    style={[styles.listBtn, isBulletActive && styles.listBtnActive]}
                     activeOpacity={0.7}
                   >
-                    <MaterialIcons name="format-list-bulleted" size={20} color={Colors.accent} />
-                    <Text style={styles.listBtnText}>Bulleted</Text>
+                    <MaterialIcons
+                      name="format-list-bulleted"
+                      size={20}
+                      color={isBulletActive ? Colors.accent : Colors.textMuted}
+                    />
+                    <Text style={[styles.listBtnText, isBulletActive && styles.listBtnTextActive]}>
+                      Bulleted
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={() => {
                       onApplyList('number');
-                      onClose();
                     }}
-                    style={styles.listBtn}
+                    style={[styles.listBtn, isNumberActive && styles.listBtnActive]}
                     activeOpacity={0.7}
                   >
-                    <MaterialIcons name="format-list-numbered" size={20} color={Colors.accent} />
-                    <Text style={styles.listBtnText}>Numbered</Text>
+                    <MaterialIcons
+                      name="format-list-numbered"
+                      size={20}
+                      color={isNumberActive ? Colors.accent : Colors.textMuted}
+                    />
+                    <Text style={[styles.listBtnText, isNumberActive && styles.listBtnTextActive]}>
+                      Numbered
+                    </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     onPress={() => {
                       onApplyList('letter');
-                      onClose();
                     }}
-                    style={styles.listBtn}
+                    style={[styles.listBtn, isLetterActive && styles.listBtnActive]}
                     activeOpacity={0.7}
                   >
-                    <MaterialIcons name="format-size" size={20} color={Colors.accent} />
-                    <Text style={styles.listBtnText}>Lettered (a.)</Text>
+                    <MaterialIcons
+                      name="format-size"
+                      size={20}
+                      color={isLetterActive ? Colors.accent : Colors.textMuted}
+                    />
+                    <Text style={[styles.listBtnText, isLetterActive && styles.listBtnTextActive]}>
+                      Lettered (a.)
+                    </Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -282,9 +303,17 @@ const styles = StyleSheet.create({
     borderColor: Colors.cardBorder,
     gap: 6,
   },
+  listBtnActive: {
+    backgroundColor: Colors.accentSoft,
+    borderColor: Colors.accent,
+  },
   listBtnText: {
     fontFamily: Typography.body,
     fontSize: 12,
-    color: Colors.text,
+    color: Colors.textMuted,
+  },
+  listBtnTextActive: {
+    fontFamily: Typography.bodyMedium,
+    color: Colors.accent,
   },
 });
