@@ -7,110 +7,10 @@ import {
   Modal,
   Switch,
   Platform,
-  PanResponder,
-  Dimensions,
 } from 'react-native';
 import { Colors, Radius, Spacing, Typography } from '../constants/theme';
 import { useAmbientSound } from '../hooks/useAmbientSound';
-
-// ── Custom volume slider (no external dep) ───────────────────────────────────
-function VolumeSlider({
-  value,
-  onValueChange,
-}: {
-  value: number;
-  onValueChange: (v: number) => void;
-}) {
-  const trackRef = React.useRef<View>(null);
-  const [trackWidth, setTrackWidth] = React.useState(0);
-
-  const panResponder = React.useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        const x = evt.nativeEvent.locationX;
-        if (trackWidth > 0) {
-          const ratio = Math.max(0, Math.min(1, x / trackWidth));
-          const stepped = Math.round(ratio * 20) / 20; // snap to 5%
-          onValueChange(stepped);
-        }
-      },
-      onPanResponderMove: (evt) => {
-        const x = evt.nativeEvent.locationX;
-        if (trackWidth > 0) {
-          const ratio = Math.max(0, Math.min(1, x / trackWidth));
-          const stepped = Math.round(ratio * 20) / 20;
-          onValueChange(stepped);
-        }
-      },
-    })
-  ).current;
-
-  return (
-    <View
-      ref={trackRef}
-      style={sliderStyles.track}
-      onLayout={(e) => setTrackWidth(e.nativeEvent.layout.width)}
-      {...panResponder.panHandlers}
-    >
-      {/* Filled portion */}
-      <View
-        style={[
-          sliderStyles.filled,
-          { width: `${value * 100}%` },
-        ]}
-      />
-      {/* Thumb */}
-      <View
-        style={[
-          sliderStyles.thumb,
-          { left: `${value * 100}%` },
-        ]}
-      />
-    </View>
-  );
-}
-
-const THUMB_SIZE = 22;
-const sliderStyles = StyleSheet.create({
-  track: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.cardBorder,
-    justifyContent: 'center',
-    position: 'relative',
-    marginVertical: 12,
-  },
-  filled: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    backgroundColor: Colors.accent,
-    borderRadius: 3,
-  },
-  thumb: {
-    position: 'absolute',
-    width: THUMB_SIZE,
-    height: THUMB_SIZE,
-    borderRadius: THUMB_SIZE / 2,
-    backgroundColor: Colors.accent,
-    borderWidth: 3,
-    borderColor: Colors.card,
-    marginLeft: -THUMB_SIZE / 2,
-    top: -(THUMB_SIZE - 6) / 2,
-    ...Platform.select({
-      ios: {
-        shadowColor: Colors.accent,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-      },
-      android: { elevation: 4 },
-    }),
-  },
-});
+import VolumeSlider from './VolumeSlider';
 
 // ── Settings Modal ───────────────────────────────────────────────────────────
 interface SettingsModalProps {
@@ -185,11 +85,15 @@ export default function SettingsModal({ visible, onClose }: SettingsModalProps) 
                   </Text>
                 </View>
                 <View style={styles.sliderRow}>
-                  <Text style={styles.sliderIcon}>🔈</Text>
+                  <TouchableOpacity onPress={() => setVolume(0)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} activeOpacity={0.6}>
+                    <Text style={styles.sliderIcon}>🔈</Text>
+                  </TouchableOpacity>
                   <View style={{ flex: 1 }}>
                     <VolumeSlider value={volume} onValueChange={setVolume} />
                   </View>
-                  <Text style={styles.sliderIcon}>🔊</Text>
+                  <TouchableOpacity onPress={() => setVolume(1)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} activeOpacity={0.6}>
+                    <Text style={styles.sliderIcon}>🔊</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
             )}
