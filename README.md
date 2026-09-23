@@ -46,8 +46,8 @@ Whether you want to track your daily mood, jot down quick ideas, or write extens
 ## 🎥 App Demo & Walkthrough
 
 <div align="center">
-  <video src="./assets/Video/Simulator%20Screen%20Recording%20-%20iPhone%2017%20Pro%20-%202026-09-23%20at%2022.08.51.mov" width="340" controls="controls">
-    <a href="./assets/Video/Simulator%20Screen%20Recording%20-%20iPhone%2017%20Pro%20-%202026-09-23%20at%2022.08.51.mov">▶️ Watch the Garden Screen Recording Demo</a>
+  <video src="https://github.com/user-attachments/assets/645c97cf-c8ff-4ee6-a00e-f30283e74748" width="340" controls="controls">
+    <a href="https://github.com/user-attachments/assets/645c97cf-c8ff-4ee6-a00e-f30283e74748">▶️ Watch the Garden Screen Recording Demo</a>
   </video>
   <p><em>Full walkthrough: creating entries, ambient rainforest sounds, voice notes, and watching your garden grow.</em></p>
 </div>
