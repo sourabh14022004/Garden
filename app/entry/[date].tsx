@@ -25,7 +25,12 @@ import MoodPicker from '../../components/MoodPicker';
 import FontPicker from '../../components/FontPicker';
 import ParagraphStyleModal from '../../components/ParagraphStyleModal';
 import AudioPlayerAttachment from '../../components/AudioPlayerAttachment';
-import { Audio } from 'expo-av';
+import {
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  RecordingPresets,
+  useAudioRecorder,
+} from 'expo-audio';
 import { Colors, Radius, Spacing, Typography } from '../../constants/theme';
 import { useFontStyle } from '../../hooks/useFontStyle';
 import { useAmbientSound } from '../../hooks/useAmbientSound';
@@ -376,7 +381,7 @@ export default function EntryScreen() {
   const inputRefs = useRef<Record<string, TextInput | null>>({});
 
   // Voice recording state
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1201,23 +1206,20 @@ export default function EntryScreen() {
 
   const startRecording = async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
+      const permission = await requestRecordingPermissionsAsync();
       if (permission.status !== 'granted') {
         Alert.alert('Permission Denied', 'Please enable microphone access in settings to record voice notes.');
         return;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
 
-      const { recording: newRecording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY
-      );
+      await audioRecorder.prepareToRecordAsync();
+      audioRecorder.record();
 
-      setRecording(newRecording);
       setIsRecording(true);
       setRecordingDuration(0);
 
@@ -1236,21 +1238,18 @@ export default function EntryScreen() {
       recordingIntervalRef.current = null;
     }
 
-    if (!recording) {
-      setIsRecording(false);
+    if (!isRecording) {
       return;
     }
 
     try {
-      await recording.stopAndUnloadAsync();
-      const uri = recording.getURI();
-      setRecording(null);
+      await audioRecorder.stop();
+      const uri = audioRecorder.uri;
       setIsRecording(false);
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
       });
 
       if (save && uri) {

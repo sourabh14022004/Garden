@@ -87,7 +87,7 @@ export default function LockScreen({ onUnlock }: LockScreenProps) {
 
 const styles = StyleSheet.create({
   absolute: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 9999, // Ensure it sits on top of everything
   },
   container: {

@@ -141,7 +141,7 @@ export default function FontPicker({ visible, onClose }: Props) {
 
 const styles = StyleSheet.create({
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'transparent',
   },
   sheet: {

@@ -6,7 +6,7 @@ import React, {
   useRef,
   useCallback,
 } from 'react';
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ── Storage keys ─────────────────────────────────────────────────────────────
@@ -54,9 +54,9 @@ export function AmbientSoundProvider({
   const [enabled, _setEnabled] = useState(true);
   const [volume, _setVolume] = useState(0.5);
   const [isPlaying, setIsPlaying] = useState(false);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const soundRef = useRef<AudioPlayer | null>(null);
   const loadedRef = useRef(false);
-  const fadeRef = useRef<NodeJS.Timeout | null>(null);
+  const fadeRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Restore persisted prefs on mount
   useEffect(() => {
@@ -72,7 +72,7 @@ export function AmbientSoundProvider({
     // Cleanup on unmount
     return () => {
       if (fadeRef.current) clearInterval(fadeRef.current);
-      soundRef.current?.unloadAsync();
+      soundRef.current?.remove();
     };
   }, []);
 
@@ -80,24 +80,20 @@ export function AmbientSoundProvider({
   const ensureLoaded = useCallback(async () => {
     if (loadedRef.current && soundRef.current) return soundRef.current;
 
-    // Configure audio mode for background-compatible playback
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
     });
 
-    const { sound } = await Audio.Sound.createAsync(
-      require('../assets/Audio/freesound_community-rainforest-33441.mp3'),
-      {
-        isLooping: true,
-        volume: volume,
-        shouldPlay: false,
-      }
+    const player = createAudioPlayer(
+      require('../assets/Audio/freesound_community-rainforest-33441.mp3')
     );
-    soundRef.current = sound;
+    player.loop = true;
+    player.volume = volume;
+    soundRef.current = player;
     loadedRef.current = true;
-    return sound;
-  }, []); // volume is set separately via setVolumeAsync
+    return player;
+  }, [volume]);
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -107,7 +103,7 @@ export function AmbientSoundProvider({
       await AsyncStorage.setItem(ENABLED_KEY, String(v));
       if (!v && soundRef.current) {
         if (fadeRef.current) clearInterval(fadeRef.current);
-        await soundRef.current.pauseAsync();
+        soundRef.current.pause();
         setIsPlaying(false);
       }
     },
@@ -121,7 +117,7 @@ export function AmbientSoundProvider({
       await AsyncStorage.setItem(VOLUME_KEY, String(clamped));
       if (soundRef.current) {
         if (fadeRef.current) clearInterval(fadeRef.current);
-        await soundRef.current.setVolumeAsync(clamped);
+        soundRef.current.volume = clamped;
       }
     },
     []
@@ -132,8 +128,8 @@ export function AmbientSoundProvider({
     try {
       if (fadeRef.current) clearInterval(fadeRef.current);
       const sound = await ensureLoaded();
-      await sound.setVolumeAsync(volume);
-      await sound.playAsync();
+      sound.volume = volume;
+      sound.play();
       setIsPlaying(true);
     } catch (e) {
       console.warn('[AmbientSound] play error', e);
@@ -144,7 +140,7 @@ export function AmbientSoundProvider({
     try {
       if (fadeRef.current) clearInterval(fadeRef.current);
       if (soundRef.current) {
-        await soundRef.current.pauseAsync();
+        soundRef.current.pause();
         setIsPlaying(false);
       }
     } catch (e) {
@@ -159,21 +155,21 @@ export function AmbientSoundProvider({
       if (fadeRef.current) clearInterval(fadeRef.current);
       
       let currentVol = 0;
-      await sound.setVolumeAsync(0);
-      await sound.playAsync();
+      sound.volume = 0;
+      sound.play();
       setIsPlaying(true);
 
       const targetVol = volume;
       const steps = 20;
       const stepVol = targetVol / steps;
       
-      fadeRef.current = setInterval(async () => {
+      fadeRef.current = setInterval(() => {
         currentVol += stepVol;
         if (currentVol >= targetVol) {
           currentVol = targetVol;
           if (fadeRef.current) clearInterval(fadeRef.current);
         }
-        await sound.setVolumeAsync(currentVol);
+        sound.volume = currentVol;
       }, 50);
     } catch (e) {
       console.warn('[AmbientSound] fadeIn error', e);
@@ -186,28 +182,25 @@ export function AmbientSoundProvider({
         if (fadeRef.current) clearInterval(fadeRef.current);
         const sound = soundRef.current;
         
-        const status = await sound.getStatusAsync();
-        if (!status.isLoaded) return;
-        
-        let currentVol = status.volume || volume;
+        let currentVol = sound.volume;
         const steps = 20;
         const stepVol = currentVol / steps;
         
-        fadeRef.current = setInterval(async () => {
+        fadeRef.current = setInterval(() => {
           currentVol -= stepVol;
           if (currentVol <= 0) {
             currentVol = 0;
             if (fadeRef.current) clearInterval(fadeRef.current);
-            await sound.pauseAsync();
+            sound.pause();
             setIsPlaying(false);
           }
-          await sound.setVolumeAsync(Math.max(0, currentVol));
+          sound.volume = Math.max(0, currentVol);
         }, 50);
       }
     } catch (e) {
       console.warn('[AmbientSound] fadeOut error', e);
     }
-  }, [volume]);
+  }, []);
 
   return (
     <AmbientSoundContext.Provider

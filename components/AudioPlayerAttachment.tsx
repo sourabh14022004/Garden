@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Slider from '@react-native-community/slider';
-import { Audio } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
 import { Ionicons } from '@expo/vector-icons';
 import { Colors, Radius, Spacing, Typography } from '../constants/theme';
 
@@ -11,7 +11,7 @@ interface AudioPlayerAttachmentProps {
 }
 
 export default function AudioPlayerAttachment({ uri, name }: AudioPlayerAttachmentProps) {
-  const [sound, setSound] = useState<Audio.Sound | null>(null);
+  const [player, setPlayer] = useState<AudioPlayer | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -19,32 +19,36 @@ export default function AudioPlayerAttachment({ uri, name }: AudioPlayerAttachme
 
   useEffect(() => {
     let active = true;
-    let loadedSound: Audio.Sound | null = null;
+    let createdPlayer: AudioPlayer | null = null;
 
     async function loadSound() {
       try {
-        const { sound: s } = await Audio.Sound.createAsync(
-          { uri },
-          { shouldPlay: false },
-          (status) => {
-            if (!active) return;
-            if (status.isLoaded) {
-              if (!isSeeking.current) {
-                setPosition(status.positionMillis || 0);
-              }
-              setDuration(status.durationMillis || 0);
-              setIsPlaying(status.isPlaying);
-              if (status.didJustFinish && !status.isLooping) {
-                setIsPlaying(false);
-                setPosition(0);
-                s.setPositionAsync(0);
-              }
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: false,
+        });
+
+        const p = createAudioPlayer(uri, { updateInterval: 250 });
+        createdPlayer = p;
+
+        p.addListener('playbackStatusUpdate', (status) => {
+          if (!active) return;
+          if (status.isLoaded) {
+            if (!isSeeking.current) {
+              setPosition(status.currentTime || 0);
+            }
+            setDuration(status.duration || 0);
+            setIsPlaying(status.playing);
+            if (status.didJustFinish && !status.loop) {
+              setIsPlaying(false);
+              setPosition(0);
+              p.seekTo(0);
             }
           }
-        );
-        loadedSound = s;
+        });
+
         if (active) {
-          setSound(s);
+          setPlayer(p);
         }
       } catch (err) {
         console.warn('Error loading audio attachment sound', err);
@@ -55,36 +59,34 @@ export default function AudioPlayerAttachment({ uri, name }: AudioPlayerAttachme
 
     return () => {
       active = false;
-      if (loadedSound) {
-        loadedSound.unloadAsync();
+      if (createdPlayer) {
+        createdPlayer.remove();
       }
     };
   }, [uri]);
 
   const handlePlayPause = async () => {
-    if (!sound) return;
+    if (!player) return;
     try {
       if (isPlaying) {
-        await sound.pauseAsync();
+        player.pause();
       } else {
-        // Configure audio mode for playback
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: false,
         });
-        await sound.playAsync();
+        player.play();
       }
     } catch (err) {
       console.warn('Error playing/pausing sound', err);
     }
   };
 
-  const formatTime = (millis: number) => {
-    const totalSecs = Math.floor(millis / 1000);
+  const formatTime = (secs: number) => {
+    const totalSecs = Math.floor(secs || 0);
     const mins = Math.floor(totalSecs / 60);
-    const secs = totalSecs % 60;
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    const remainingSecs = totalSecs % 60;
+    return `${mins}:${remainingSecs < 10 ? '0' : ''}${remainingSecs}`;
   };
 
   const handleSlidingStart = () => {
@@ -93,9 +95,9 @@ export default function AudioPlayerAttachment({ uri, name }: AudioPlayerAttachme
 
   const handleSlidingComplete = async (value: number) => {
     isSeeking.current = false;
-    if (!sound) return;
+    if (!player) return;
     try {
-      await sound.setPositionAsync(value);
+      await player.seekTo(value);
       setPosition(value);
     } catch (err) {
       console.warn('Error seeking sound', err);

@@ -504,7 +504,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FAF7F0",
   },
   bg: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: "#FAF7F0",
   },
 
