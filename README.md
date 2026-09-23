@@ -39,12 +39,24 @@ Whether you want to track your daily mood, jot down quick ideas, or write extens
 
 ---
 
+## 🎥 App Demo & Walkthrough
+
+<div align="center">
+  <video src="./assets/Video/Simulator%20Screen%20Recording%20-%20iPhone%2017%20Pro%20-%202026-09-23%20at%2022.08.51.mov" width="340" controls="controls">
+    <a href="./assets/Video/Simulator%20Screen%20Recording%20-%20iPhone%2017%20Pro%20-%202026-09-23%20at%2022.08.51.mov">▶️ Watch the Garden Screen Recording Demo</a>
+  </video>
+  <p><em>Full walkthrough: creating entries, ambient rainforest sounds, voice notes, and watching your garden grow.</em></p>
+</div>
+
+---
+
 ## 🛠 Tech Stack
 
-- **Framework**: [React Native](https://reactnative.dev/) with [Expo Router](https://docs.expo.dev/router/introduction/)
-- **Animations & Sound**: React Native Reanimated & Expo AV
-- **Authentication**: Expo LocalAuthentication (Biometrics)
-- **Media**: Expo ImagePicker & Expo AV Recording
+- **Framework**: [React Native](https://reactnative.dev/) with [Expo Router](https://docs.expo.dev/router/introduction/) (SDK 57)
+- **Sound & Audio**: Expo Audio (`expo-audio`) with Rainforest ambient soundscapes
+- **Animations**: React Native Reanimated
+- **Authentication**: Expo LocalAuthentication (Biometrics / Face ID / Touch ID)
+- **Media**: Expo ImagePicker & Expo Audio Recording
 - **Storage**: AsyncStorage (`@react-native-async-storage/async-storage`)
 - **Typography**: Expo Google Fonts (`Crimson Pro`, `Inter`, `Lora`, `Nunito`, `Playfair Display`)
 
