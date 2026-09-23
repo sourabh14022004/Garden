@@ -1,7 +1,3 @@
-
-
-https://github.com/user-attachments/assets/645c97cf-c8ff-4ee6-a00e-f30283e74748
-
 # Garden 🌿
 
 Garden is a beautiful, distraction-free daily note-taking and journaling application built with React Native and Expo. Instead of just logging text, Garden turns your thoughts, moods, and reflections into a growing virtual garden.
@@ -46,8 +42,8 @@ Whether you want to track your daily mood, jot down quick ideas, or write extens
 ## 🎥 App Demo & Walkthrough
 
 <div align="center">
-  <video src="https://github.com/user-attachments/assets/645c97cf-c8ff-4ee6-a00e-f30283e74748" width="340" controls="controls">
-    <a href="https://github.com/user-attachments/assets/645c97cf-c8ff-4ee6-a00e-f30283e74748">▶️ Watch the Garden Screen Recording Demo</a>
+  <video src="https://github.com/user-attachments/assets/47bac67b-bbd7-46d4-8029-655e232a9f60" width="340" controls="controls">
+    <a href="https://github.com/user-attachments/assets/47bac67b-bbd7-46d4-8029-655e232a9f60">▶️ Watch the Garden Screen Recording Demo</a>
   </video>
   <p><em>Full walkthrough: creating entries, ambient rainforest sounds, voice notes, and watching your garden grow.</em></p>
 </div>
